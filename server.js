@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
+const ALLOWED_HOSTS = ['radio-marinha-pagina.onrender.com'];
 
 const API_URL = 'https://stm0.inovativa.net/api/nowplaying/radiomarinha';
 const FALLBACK_GIF = '/imagens/radio_gif.gif';
@@ -235,7 +236,10 @@ app.get('/api/artist', async (req, res) => {
 async function startServer() {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: {
+            middlewareMode: true,
+            allowedHosts: ALLOWED_HOSTS
+        },
         appType: "spa"
     });
     app.use(vite.middlewares);
