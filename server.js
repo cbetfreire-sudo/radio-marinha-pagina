@@ -10,6 +10,17 @@ const PORT = process.env.PORT || 3001;
 
 const API_URL = 'https://stm0.inovativa.net/api/nowplaying/radiomarinha';
 const FALLBACK_GIF = '/imagens/radio_gif.gif';
+const STATION_IDENTIFIERS = ['radio marinha', 'programacao ao vivo'];
+const PORTUGUESE_SPELLING = new Map([
+    ['acustico', 'acústico'], ['alem', 'além'], ['amanha', 'amanhã'],
+    ['aviao', 'avião'], ['caca', 'cacá'], ['cancao', 'canção'], ['coracao', 'coração'],
+    ['entao', 'então'], ['estacao', 'estação'], ['facil', 'fácil'], ['fe', 'fé'],
+    ['girao', 'girão'], ['historia', 'história'], ['irmao', 'irmão'], ['mae', 'mãe'],
+    ['maeana', 'mãeana'], ['magalhaes', 'magalhães'], ['nao', 'não'], ['ninguem', 'ninguém'],
+    ['paixao', 'paixão'], ['radio', 'rádio'], ['relicario', 'relicário'],
+    ['sinonimos', 'sinônimos'], ['so', 'só'], ['taxi', 'táxi'], ['voce', 'você'],
+    ['violao', 'violão'], ['ze', 'zé']
+]);
 
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -24,16 +35,97 @@ let nowPlaying = {
     updatedAt: null
 };
 
-async function findHighResCover(artist, title) {
+function normalizeMetadata(value) {
+    return String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+        .replace(/\b(feat|featuring|ft)\b.*$/g, ' ')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+}
+
+function normalizeTitle(value) {
+    return normalizeMetadata(value)
+        .replace(/\b(ao vivo|acustico|live|remasterizado|remastered)\b/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function isStationIdentifier(artist, title) {
+    const metadata = `${normalizeMetadata(artist)} ${normalizeMetadata(title)}`;
+    return STATION_IDENTIFIERS.some((identifier) => metadata.includes(identifier));
+}
+
+function restoreAccents(value, officialValues, usePortugueseSpelling = false) {
+    const accentsByWord = new Map();
+
+    officialValues.forEach((officialValue) => {
+        String(officialValue || '').match(/[\p{L}\p{N}]+/gu)?.forEach((word) => {
+            const normalizedWord = normalizeMetadata(word);
+            if (normalizedWord && normalizedWord !== word.toLowerCase()) {
+                accentsByWord.set(normalizedWord, word);
+            }
+        });
+    });
+
+    return String(value || '').replace(/[\p{L}\p{N}]+/gu, (word) => {
+        const normalizedWord = normalizeMetadata(word);
+        const officialWord = accentsByWord.get(normalizedWord)
+            || (usePortugueseSpelling ? PORTUGUESE_SPELLING.get(normalizedWord) : null);
+        if (!officialWord) return word;
+        if (word === word.toUpperCase()) return officialWord.toUpperCase();
+        if (word[0] === word[0].toUpperCase()) return officialWord[0].toUpperCase() + officialWord.slice(1);
+        return officialWord.toLowerCase();
+    });
+}
+
+function isMatchingTrack(result, artist, title) {
+    const sourceArtist = normalizeMetadata(artist);
+    const sourceTitle = normalizeTitle(title);
+    const resultArtist = normalizeMetadata(result.artist?.name);
+    const resultTitle = normalizeTitle(result.title_short || result.title);
+    return Boolean(resultArtist && resultTitle)
+        && resultTitle === sourceTitle
+        && sourceArtist.includes(resultArtist);
+}
+
+async function findTrackMetadata(artist, title) {
     try {
         const query = encodeURIComponent(`${artist} ${title}`);
-        const res = await fetch(`https://itunes.apple.com/search?term=${query}&entity=song&limit=1`);
-        const data = await res.json();
-        if (data.results?.length > 0) {
-            return data.results[0].artworkUrl100.replace('100x100', '600x600');
+        const [deezerResponse, itunesResponse] = await Promise.allSettled([
+            fetch(`https://api.deezer.com/search?q=${query}&limit=10`).then((response) => response.json()),
+            fetch(`https://itunes.apple.com/search?term=${query}&entity=song&limit=10&country=BR`).then((response) => response.json())
+        ]);
+        const deezerTracks = deezerResponse.status === 'fulfilled' ? deezerResponse.value.data || [] : [];
+        const itunesTracks = itunesResponse.status === 'fulfilled'
+            ? (itunesResponse.value.results || []).map((result) => ({
+                title: result.trackName,
+                title_short: result.trackName,
+                artist: { name: result.artistName },
+                album: {
+                    title: result.collectionName,
+                    cover_xl: result.artworkUrl100?.replace('100x100', '600x600')
+                }
+            }))
+            : [];
+        const match = [...deezerTracks, ...itunesTracks]
+            .find((result) => isMatchingTrack(result, artist, title));
+        if (match) {
+            const officialValues = [match.title, match.title_short, match.artist?.name, match.album?.title];
+            return {
+                title: restoreAccents(title, officialValues, true),
+                artist: restoreAccents(artist, officialValues, true),
+                cover: match.album?.cover_xl || match.album?.cover_big || null
+            };
         }
-    } catch (e) { console.error("[ITUNES ERROR]:", e.message); }
-    return null;
+    } catch (e) { console.error("[CATALOG ERROR]:", e.message); }
+    return {
+        title: restoreAccents(title, [], true),
+        artist: restoreAccents(artist, [], true),
+        cover: null
+    };
 }
 
 async function fetchRadioStatus() {
@@ -43,18 +135,20 @@ async function fetchRadioStatus() {
         const current = data.now_playing?.song;
 
         if (current && current.text !== nowPlaying.streamTitle) {
-            let coverUrl = current.art;
-            
-            // Se a capa for a genérica ou não existir, tenta iTunes
-            if (!coverUrl || coverUrl.includes('generic_song.jpg')) {
-                const itunesCover = await findHighResCover(current.artist, current.title);
-                // Se o iTunes também não achar, usa o seu GIF
-                coverUrl = itunesCover || FALLBACK_GIF;
+            const stationIdentifier = isStationIdentifier(current.artist, current.title);
+            const catalogTrack = stationIdentifier
+                ? null
+                : await findTrackMetadata(current.artist, current.title);
+            let coverUrl = stationIdentifier ? FALLBACK_GIF : current.art;
+
+            // Identificações da rádio não são músicas e devem usar a animação padrão.
+            if (!stationIdentifier && (!coverUrl || coverUrl.includes('generic_song.jpg'))) {
+                coverUrl = catalogTrack?.cover || FALLBACK_GIF;
             }
 
             nowPlaying = {
-                title: current.title || "Programação ao vivo",
-                artist: current.artist || "Rádio Marinha",
+                title: catalogTrack?.title || current.title || "Programação ao vivo",
+                artist: catalogTrack?.artist || current.artist || "Rádio Marinha",
                 album: current.album || "Rádio Marinha Online",
                 cover: coverUrl || FALLBACK_GIF,
                 streamTitle: current.text,

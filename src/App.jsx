@@ -539,11 +539,7 @@ export default function App() {
   const audioRef = useRef(null);
   const timerRef = useRef(null);
   const anchorTimerRef = useRef(null);
-  const ambientTransitionTimerRef = useRef(null);
-  const ambientCoverRef = useRef(initialTrack.cover);
   const [track, setTrack] = useState(initialTrack);
-  const [ambientCover, setAmbientCover] = useState(initialTrack.cover);
-  const [previousAmbientCover, setPreviousAmbientCover] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [anchorLifting, setAnchorLifting] = useState(false);
@@ -589,32 +585,6 @@ export default function App() {
     const interval = setInterval(loadTrack, 5000);
     return () => { active = false; clearInterval(interval); };
   }, []);
-
-  useEffect(() => {
-    const requestedCover = track.cover || FALLBACK_COVER;
-    if (requestedCover === ambientCoverRef.current) return;
-
-    let cancelled = false;
-    const preloader = new Image();
-    const transitionToCover = (nextCover) => {
-      if (cancelled || nextCover === ambientCoverRef.current) return;
-      clearTimeout(ambientTransitionTimerRef.current);
-      setPreviousAmbientCover(ambientCoverRef.current);
-      ambientCoverRef.current = nextCover;
-      setAmbientCover(nextCover);
-      ambientTransitionTimerRef.current = setTimeout(() => setPreviousAmbientCover(null), 2100);
-    };
-
-    preloader.onload = () => transitionToCover(requestedCover);
-    preloader.onerror = () => transitionToCover(FALLBACK_COVER);
-    preloader.src = requestedCover;
-
-    return () => {
-      cancelled = true;
-      preloader.onload = null;
-      preloader.onerror = null;
-    };
-  }, [track.cover]);
 
   useEffect(() => {
     const updateCurrentProgram = () => setCurrentProgram(getCurrentProgram());
@@ -664,7 +634,6 @@ export default function App() {
   useEffect(() => () => {
     clearInterval(timerRef.current);
     clearTimeout(anchorTimerRef.current);
-    clearTimeout(ambientTransitionTimerRef.current);
   }, []);
 
   async function toggleRadio() {
@@ -745,10 +714,7 @@ export default function App() {
 
   return (
     <main className={`app ${playing ? "is-playing" : ""} ${loading ? "is-loading" : ""} ${anchorLifting ? "anchor-lifting" : ""} ${anchorDeploying ? "anchor-deploying" : ""}`}>
-      <div className="ambient" aria-hidden="true">
-        {previousAmbientCover && <span className="ambient-cover ambient-cover-previous" style={{ "--ambient-image": `url("${previousAmbientCover}")` }} />}
-        <span key={ambientCover} className={`ambient-cover ambient-cover-current ${previousAmbientCover ? "is-entering" : ""}`} style={{ "--ambient-image": `url("${ambientCover}")` }} />
-      </div>
+      <div className="ambient" aria-hidden="true" />
       <section className="shell" aria-label="Player da Rádio Marinha">
         <header className="topbar">
           <div className="brand">
