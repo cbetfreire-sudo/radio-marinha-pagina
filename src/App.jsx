@@ -44,15 +44,16 @@ const ActionIcon = ({ name }) => {
   return <svg className="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 };
 
-function SloganOceanWave() {
+function SloganOceanWave({ active }) {
   const canvasRef = useRef(null);
+  const navigationTargetRef = useRef(active);
+  navigationTargetRef.current = active;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d", { alpha: true });
     if (!canvas || !context) return;
 
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     let width = 1;
     let height = 1;
     let pixelRatio = 1;
@@ -74,46 +75,56 @@ function SloganOceanWave() {
     let shipImpact = 0;
     let previousBowWater = null;
     let shipReady = false;
+    let seaEnergy = navigationTargetRef.current ? 1 : 0;
+    let anchorProgress = navigationTargetRef.current ? 1 : 0;
+    let pendulumTime = 0;
     const shipImage = new Image();
     shipImage.decoding = "async";
     const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
     const minimumFrameTime = coarsePointer ? 1000 / 30 : 0;
+    const waterlineRatio = .37;
 
-    const waveScale = () => Math.max(.78, height / 30);
+    const smoothstep = (value) => value * value * (3 - 2 * value);
+    const navigationStrength = () => smoothstep(seaEnergy);
+    const waveAmplitude = () => .1 + navigationStrength() * .9;
+    const waveScale = () => Math.max(.78, Math.min(1.45, height / 30));
     const obstacleX = () => width * .47;
-    const vesselWidth = () => Math.max(88, Math.min(108, width * .43));
+    const vesselWidth = () => Math.max(100, Math.min(120, width * .52));
     const surfaceY = (x, time) => {
       const scale = waveScale();
-      const baseline = height * .68;
+      const baseline = height * waterlineRatio;
+      const amplitude = waveAmplitude();
       const directWave = baseline
-        - Math.sin(x * .036 - time * 1.76) * 3.15 * scale
-        - Math.sin(x * .079 - time * 2.62 + .85) * 1.05 * scale
-        - Math.sin(x * .018 - time * .82 + 2.1) * .65 * scale;
+        - Math.sin(x * .036 - time * 1.76) * 3.15 * scale * amplitude
+        - Math.sin(x * .079 - time * 2.62 + .85) * 1.05 * scale * amplitude
+        - Math.sin(x * .018 - time * .82 + 2.1) * .65 * scale * amplitude;
       const distanceToObstacle = obstacleX() - x;
       if (distanceToObstacle <= 0) return directWave;
       const reflectionFalloff = Math.exp(-distanceToObstacle / Math.max(46, width * .25));
-      const reflectedWave = Math.sin((obstacleX() * 2 - x) * .043 - time * 1.34 + .4) * .58 * scale * reflectionFalloff;
+      const reflectedWave = Math.sin((obstacleX() * 2 - x) * .043 - time * 1.34 + .4) * .58 * scale * reflectionFalloff * amplitude;
       return directWave - reflectedWave;
     };
     const surfaceX = (x, time) => {
       if (x <= 0 || x >= width) return x;
       const scale = waveScale();
+      const amplitude = waveAmplitude();
       return x
-        + Math.cos(x * .036 - time * 1.76) * .52 * scale
-        + Math.cos(x * .079 - time * 2.62 + .85) * .16 * scale;
+        + Math.cos(x * .036 - time * 1.76) * .52 * scale * amplitude
+        + Math.cos(x * .079 - time * 2.62 + .85) * .16 * scale * amplitude;
     };
     const deepY = (x, time) => {
       const scale = waveScale();
-      return height * .77
-        - Math.sin(x * .028 - time * .88 + 1.45) * 2.15 * scale
-        - Math.sin(x * .057 - time * 1.18) * .6 * scale;
+      const amplitude = waveAmplitude();
+      return height * .48
+        - Math.sin(x * .028 - time * .88 + 1.45) * 2.15 * scale * amplitude
+        - Math.sin(x * .057 - time * 1.18) * .6 * scale * amplitude;
     };
 
     const createGradients = () => {
-      const deepFill = context.createLinearGradient(0, height * .45, 0, height);
+      const deepFill = context.createLinearGradient(0, height * .35, 0, height * .55);
       deepFill.addColorStop(0, "rgba(20, 126, 167, .18)");
       deepFill.addColorStop(1, "rgba(4, 50, 78, 0)");
-      const waterFill = context.createLinearGradient(0, height * .32, 0, height);
+      const waterFill = context.createLinearGradient(0, height * waterlineRatio, 0, height * .55);
       waterFill.addColorStop(0, "rgba(48, 192, 224, .38)");
       waterFill.addColorStop(.5, "rgba(12, 112, 157, .25)");
       waterFill.addColorStop(1, "rgba(4, 49, 76, .03)");
@@ -134,8 +145,9 @@ function SloganOceanWave() {
 
     const drawWaveLayer = (waveFunction, time, fillStyle, strokeStyle, lineWidth, horizontalDisplacement) => {
       traceSurface(waveFunction, time, horizontalDisplacement);
-      context.lineTo(width + 2, height + 2);
-      context.lineTo(0, height + 2);
+      const waterFloor = height * .55;
+      context.lineTo(width + 2, waterFloor);
+      context.lineTo(0, waterFloor);
       context.closePath();
       context.fillStyle = fillStyle;
       context.fill();
@@ -148,7 +160,7 @@ function SloganOceanWave() {
 
     const drawCrestFoam = (time) => {
       const scale = waveScale();
-      const threshold = height * .68 - 2.15 * scale;
+      const threshold = height * waterlineRatio - 2.15 * scale * waveAmplitude();
       let drawing = false;
       context.beginPath();
       for (let x = 0; x <= width + 2; x += 1.5) {
@@ -249,7 +261,7 @@ function SloganOceanWave() {
       const surgeTarget = (
         Math.sin(time * .54 + .65) * .85
         + Math.sin(time * .23 + 2.25) * .35
-      ) * scale;
+      ) * scale * navigationStrength();
       [shipSurge, shipSurgeVelocity] = updateSpring(shipSurge, shipSurgeVelocity, surgeTarget, .32, .95, deltaTime);
 
       const x = obstacleX() + shipSurge;
@@ -258,10 +270,10 @@ function SloganOceanWave() {
         (sum, [position, weight]) => sum + surfaceY(x + renderedWidth * position, time) * weight,
         0
       ) - .2 * scale;
-      const heaveBaseline = height * .68 - .2 * scale;
+      const heaveBaseline = height * waterlineRatio - .2 * scale;
       const heaveTarget = Math.max(
-        heaveBaseline - 2.8 * scale,
-        Math.min(heaveBaseline + 2.8 * scale, sampledHeave)
+        heaveBaseline - 2.8 * scale * waveAmplitude(),
+        Math.min(heaveBaseline + 2.8 * scale * waveAmplitude(), sampledHeave)
       );
       [shipHeave, shipHeaveVelocity] = updateSpring(shipHeave, shipHeaveVelocity, heaveTarget, .95, .82, deltaTime);
 
@@ -282,8 +294,8 @@ function SloganOceanWave() {
 
       const waveVelocity = !isStaticFrame && previousBowWater !== null ? (bowWaterY - previousBowWater) / deltaTime : 0;
       const closingVelocity = shipHeaveVelocity - waveVelocity;
-      const crestFactor = Math.max(0, Math.min(1, (height * .68 - bowWaterY - scale) / (3.8 * scale)));
-      const rawImpact = Math.max(0, Math.min(1, crestFactor * .62 + Math.max(0, closingVelocity) * .035));
+      const crestFactor = Math.max(0, Math.min(1, (height * waterlineRatio - bowWaterY - scale) / (3.8 * scale)));
+      const rawImpact = Math.max(0, Math.min(1, crestFactor * .62 + Math.max(0, closingVelocity) * .035)) * navigationStrength();
       const impactResponse = rawImpact > shipImpact ? .07 : .24;
       const impactBlend = !isStaticFrame ? 1 - Math.exp(-deltaTime / impactResponse) : 0;
       shipImpact += (rawImpact - shipImpact) * impactBlend;
@@ -293,7 +305,7 @@ function SloganOceanWave() {
 
       // Duas trilhas segmentadas na popa, dissipando em vez de formar uma linha decorativa.
       const wakeLength = Math.max(0, Math.min(width - sternX + 1, Math.max(18, Math.min(27, renderedWidth * .27))));
-      if (wakeLength > 5) {
+      if (navigationStrength() > .04 && wakeLength > 5) {
         const wakeY = surfaceY(sternX, time) + .7 * scale;
         const wakeSegments = Math.max(7, Math.round(wakeLength / 1.8));
         const drawWakeTrail = (offset, amplitude, lineWidth, opacity, phase) => {
@@ -316,8 +328,8 @@ function SloganOceanWave() {
         context.save();
         context.globalCompositeOperation = "screen";
         context.lineCap = "round";
-        drawWakeTrail(0, .55 * scale, Math.max(.78, 1.05 * scale), .56, 0);
-        drawWakeTrail(1.05 * scale, 1.05 * scale, Math.max(.5, .65 * scale), .34, 1.1);
+        drawWakeTrail(0, .55 * scale, Math.max(.78, 1.05 * scale), .56 * navigationStrength(), 0);
+        drawWakeTrail(1.05 * scale, 1.05 * scale, Math.max(.5, .65 * scale), .34 * navigationStrength(), 1.1);
         context.restore();
       }
 
@@ -387,6 +399,121 @@ function SloganOceanWave() {
       context.shadowBlur = 2.2 * scale;
       context.shadowOffsetY = 1.1 * scale;
       context.drawImage(shipImage, -renderedWidth * .5, -renderedHeight * .88, renderedWidth, renderedHeight);
+
+      // A âncora pertence ao navio: fundeada na proa quando a rádio está
+      // parada e recolhida suavemente antes de o navio voltar a navegar.
+      const anchorTravel = smoothstep(anchorProgress);
+      const anchorOpacity = .8 + (1 - anchorTravel) * .2;
+      if (anchorOpacity > .01) {
+        const detailScale = Math.max(.82, Math.min(1.18, width / 190));
+        const bowX = -renderedWidth * .39;
+        const hawseY = -renderedHeight * .16;
+        const deployedChainLength = Math.max(28, Math.min(45, height * .48));
+        const chainLength = (deployedChainLength * (1 - anchorTravel) + 1.5 * anchorTravel) * detailScale;
+        const anchorSize = (8 * (1 - anchorTravel) + 2.35 * anchorTravel) * detailScale;
+        const deployedAmount = 1 - anchorTravel;
+        const pendulumOffset = (
+          Math.sin(pendulumTime * .78)
+          + Math.sin(pendulumTime * 1.31 + .9) * .28
+        ) * 1.45 * detailScale * (.04 + deployedAmount * .96);
+        const stowedOffsetX = anchorTravel * 2.2 * detailScale;
+        const chainEndX = bowX - .4 * scale + pendulumOffset + stowedOffsetX;
+        const pendulumAngle = pendulumOffset / Math.max(18, chainLength) * .72;
+        context.save();
+        context.globalAlpha = anchorOpacity;
+        context.lineCap = "round";
+        context.lineJoin = "round";
+        context.shadowColor = "rgba(0, 7, 13, .62)";
+        context.shadowBlur = 1.8 * scale;
+
+        // Corrente de aço, com uma base escura para continuar legível sobre a água.
+        context.globalAlpha = anchorOpacity * (.06 + deployedAmount * .94);
+        context.setLineDash([1.25 * scale, 1.15 * scale]);
+        context.beginPath();
+        context.moveTo(bowX, hawseY);
+        context.quadraticCurveTo(
+          bowX + pendulumOffset * .28,
+          hawseY + chainLength * .46,
+          chainEndX,
+          hawseY + chainLength
+        );
+        context.strokeStyle = "#46535c";
+        context.lineWidth = Math.max(1.35, 1.32 * scale);
+        context.stroke();
+        context.strokeStyle = "#dce4e9";
+        context.lineWidth = Math.max(.68, .62 * scale);
+        context.stroke();
+        context.setLineDash([]);
+
+        // A âncora reduz pela perspectiva e termina apoiada no escovém da proa.
+        context.globalAlpha = anchorOpacity;
+        context.translate(chainEndX, hawseY + chainLength + anchorSize * .72);
+        context.rotate(pendulumAngle);
+
+        const steel = context.createLinearGradient(-anchorSize, 0, anchorSize, 0);
+        steel.addColorStop(0, "#66737c");
+        steel.addColorStop(.24, "#d7e0e5");
+        steel.addColorStop(.46, "#f2f6f8");
+        steel.addColorStop(.7, "#9ca8b0");
+        steel.addColorStop(1, "#56636c");
+        context.fillStyle = steel;
+        context.strokeStyle = "#46535c";
+        context.lineWidth = Math.max(.58, anchorSize * .12);
+
+        // Stockless anchor: haste sem cepo, coroa articulada e patas largas.
+        context.beginPath();
+        context.arc(0, -anchorSize * .79, anchorSize * .27, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+
+        context.beginPath();
+        context.arc(0, -anchorSize * .79, anchorSize * .11, 0, Math.PI * 2);
+        context.fillStyle = "#26343e";
+        context.fill();
+
+        context.fillStyle = steel;
+        context.beginPath();
+        context.moveTo(-anchorSize * .16, -anchorSize * .55);
+        context.lineTo(anchorSize * .16, -anchorSize * .55);
+        context.lineTo(anchorSize * .2, anchorSize * .48);
+        context.lineTo(anchorSize * .38, anchorSize * .68);
+        context.lineTo(-anchorSize * .38, anchorSize * .68);
+        context.lineTo(-anchorSize * .2, anchorSize * .48);
+        context.closePath();
+        context.fill();
+        context.stroke();
+
+        // Patas móveis e largas, características da âncora sem cepo.
+        context.beginPath();
+        context.moveTo(-anchorSize * .08, anchorSize * .53);
+        context.lineTo(-anchorSize * .7, anchorSize * .58);
+        context.lineTo(-anchorSize * 1.02, anchorSize * .08);
+        context.lineTo(-anchorSize * .52, anchorSize * .25);
+        context.lineTo(-anchorSize * .31, anchorSize * .48);
+        context.closePath();
+        context.moveTo(anchorSize * .08, anchorSize * .53);
+        context.lineTo(anchorSize * .7, anchorSize * .58);
+        context.lineTo(anchorSize * 1.02, anchorSize * .08);
+        context.lineTo(anchorSize * .52, anchorSize * .25);
+        context.lineTo(anchorSize * .31, anchorSize * .48);
+        context.closePath();
+        context.fill();
+        context.stroke();
+
+        context.beginPath();
+        context.ellipse(0, anchorSize * .62, anchorSize * .35, anchorSize * .17, 0, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+
+        // Reflexo central curto para sugerir metal polido sem perder o desenho.
+        context.beginPath();
+        context.moveTo(-anchorSize * .055, -anchorSize * .43);
+        context.lineTo(-anchorSize * .035, anchorSize * .34);
+        context.strokeStyle = "rgba(255,255,255,.72)";
+        context.lineWidth = Math.max(.4, anchorSize * .055);
+        context.stroke();
+        context.restore();
+      }
       context.restore();
 
       // A superfície passa na frente da parte inferior do casco.
@@ -415,7 +542,7 @@ function SloganOceanWave() {
 
       const impactPoint = drawShip(elapsed, isStatic ? 0 : deltaTime);
       const impactStrength = impactPoint.impactStrength;
-      if (shipReady && !isStatic && impactStrength > .42 && previousImpact <= .42 && elapsed - lastSplashTime > 1.35) {
+      if (navigationStrength() > .45 && shipReady && !isStatic && impactStrength > .42 && previousImpact <= .42 && elapsed - lastSplashTime > 1.35) {
         spawnImpact(impactPoint.x, impactPoint.y);
         lastSplashTime = elapsed;
       }
@@ -431,7 +558,13 @@ function SloganOceanWave() {
       const deltaTime = Math.min(.034, Math.max(0, (now - previousFrame) / 1000));
       previousFrame = now;
       previousRender = now;
-      simulationTime += deltaTime;
+      const target = navigationTargetRef.current ? 1 : 0;
+      const seaResponse = target ? 1.65 : 2.1;
+      const anchorResponse = target ? .52 : .72;
+      seaEnergy += (target - seaEnergy) * (1 - Math.exp(-deltaTime / seaResponse));
+      anchorProgress += (target - anchorProgress) * (1 - Math.exp(-deltaTime / anchorResponse));
+      pendulumTime += deltaTime;
+      simulationTime += deltaTime * (.025 + navigationStrength() * .975);
       drawFrame(simulationTime, deltaTime);
       animationFrame = requestAnimationFrame(render);
     };
@@ -450,7 +583,7 @@ function SloganOceanWave() {
       const now = performance.now();
       previousFrame = now;
       previousRender = now;
-      if (reducedMotion.matches || document.hidden || !isIntersecting) {
+      if (document.hidden || !isIntersecting) {
         drawFrame(simulationTime || .8, 0, true);
       } else {
         animationFrame = requestAnimationFrame(render);
@@ -468,7 +601,6 @@ function SloganOceanWave() {
       startAnimation();
     };
     const handleVisibility = () => document.hidden ? stopAnimation() : startAnimation();
-    const handleMotionPreference = () => startAnimation();
     const handleShipLoad = () => {
       shipReady = true;
       startAnimation();
@@ -484,7 +616,6 @@ function SloganOceanWave() {
     intersectionObserver?.observe(canvas);
     if (!resizeObserver) window.addEventListener("resize", resizeCanvas);
     document.addEventListener("visibilitychange", handleVisibility);
-    reducedMotion.addEventListener?.("change", handleMotionPreference);
     shipImage.addEventListener("load", handleShipLoad);
     shipImage.src = "/imagens/navio-f200-v2.png";
     resizeCanvas();
@@ -495,7 +626,6 @@ function SloganOceanWave() {
       intersectionObserver?.disconnect();
       if (!resizeObserver) window.removeEventListener("resize", resizeCanvas);
       document.removeEventListener("visibilitychange", handleVisibility);
-      reducedMotion.removeEventListener?.("change", handleMotionPreference);
       shipImage.removeEventListener("load", handleShipLoad);
     };
   }, []);
@@ -538,12 +668,9 @@ function getCurrentProgram(date = new Date()) {
 export default function App() {
   const audioRef = useRef(null);
   const timerRef = useRef(null);
-  const anchorTimerRef = useRef(null);
   const [track, setTrack] = useState(initialTrack);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [anchorLifting, setAnchorLifting] = useState(false);
-  const [anchorDeploying, setAnchorDeploying] = useState(false);
   const [volume, setVolume] = useState(() => getStored("radio-volume", 0.85));
   const [lastVolume, setLastVolume] = useState(0.85);
   const [message, setMessage] = useState("");
@@ -633,7 +760,6 @@ export default function App() {
 
   useEffect(() => () => {
     clearInterval(timerRef.current);
-    clearTimeout(anchorTimerRef.current);
   }, []);
 
   async function toggleRadio() {
@@ -644,16 +770,10 @@ export default function App() {
       return;
     }
     try {
-      clearTimeout(anchorTimerRef.current);
-      setAnchorDeploying(false);
-      setAnchorLifting(true);
-      anchorTimerRef.current = setTimeout(() => setAnchorLifting(false), 1250);
       setLoading(true);
       audioRef.current.src = `${STREAM_URL}?live=${Date.now()}`;
       await audioRef.current.play();
     } catch {
-      clearTimeout(anchorTimerRef.current);
-      setAnchorLifting(false);
       setMessage("Não foi possível iniciar o áudio. Tente novamente.");
     } finally {
       setLoading(false);
@@ -713,7 +833,7 @@ export default function App() {
   }
 
   return (
-    <main className={`app ${playing ? "is-playing" : ""} ${loading ? "is-loading" : ""} ${anchorLifting ? "anchor-lifting" : ""} ${anchorDeploying ? "anchor-deploying" : ""}`}>
+    <main className={`app ${playing ? "is-playing" : ""} ${loading ? "is-loading" : ""}`}>
       <div className="ambient" aria-hidden="true" />
       <section className="shell" aria-label="Player da Rádio Marinha">
         <header className="topbar">
@@ -722,7 +842,7 @@ export default function App() {
             <div className="brand-copy">
               <small className="sailing-slogan" aria-label="Navegando nas ondas do Rádio">
                 <span className="slogan-wake" aria-hidden="true">
-                  <SloganOceanWave />
+                  <SloganOceanWave active={playing || loading} />
                 </span>
                 <span className="slogan-words">Navegando nas ondas do Rádio</span>
               </small>
@@ -738,68 +858,6 @@ export default function App() {
                 <span className="now-dot" aria-hidden="true" />
                 <span className="mini-wave" aria-hidden="true">{Array.from({ length: 7 }, (_, index) => <i key={index} style={{ "--bar": index }} />)}</span>
                 <span className="eyebrow">{loading ? "SUSPENDENDO" : playing ? "NAVEGANDO" : "RÁDIO FUNDEADA"}</span>
-                <span className="anchor-slot" aria-hidden="true">
-                  <span className="anchor-rig">
-                    <svg className="anchor-chain" viewBox="0 0 14 34" fill="none">
-                      <defs>
-                        <linearGradient id="chain-silver" x1="3" y1="0" x2="11" y2="11" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#f5fafd" />
-                          <stop offset=".28" stopColor="#aeb9c1" />
-                          <stop offset=".58" stopColor="#69757e" />
-                          <stop offset=".82" stopColor="#dce5ea" />
-                          <stop offset="1" stopColor="#818d96" />
-                        </linearGradient>
-                        <g id="chain-link-upright">
-                          <rect className="chain-link-shadow" x="3.4" y="0" width="7.2" height="10.5" rx="3.6" />
-                          <rect className="chain-link-metal" x="3.4" y="0" width="7.2" height="10.5" rx="3.6" />
-                          <path className="chain-link-glint" d="M5.2 2.1C4.6 3.3 4.5 6.8 5.3 8" />
-                        </g>
-                        <g id="chain-link-flat">
-                          <ellipse className="chain-link-shadow" cx="7" cy="5.25" rx="4.7" ry="2.65" />
-                          <ellipse className="chain-link-metal" cx="7" cy="5.25" rx="4.7" ry="2.65" />
-                          <path className="chain-link-glint" d="M4.2 4.5c1.1-.8 4.3-1 5.6-.1" />
-                        </g>
-                      </defs>
-                      <use href="#chain-link-upright" transform="translate(0 -4)" />
-                      <use href="#chain-link-flat" transform="translate(0 3.2)" />
-                      <use href="#chain-link-upright" transform="translate(0 7.4)" />
-                      <use href="#chain-link-flat" transform="translate(0 14.8)" />
-                      <use href="#chain-link-upright" transform="translate(0 19)" />
-                      <g className="chain-shackle">
-                        <path className="chain-link-shadow" d="M3.4 28.2v1.4A3.6 3.6 0 0 0 7 33.2a3.6 3.6 0 0 0 3.6-3.6v-1.4" />
-                        <path className="chain-link-metal" d="M3.4 28.2v1.4A3.6 3.6 0 0 0 7 33.2a3.6 3.6 0 0 0 3.6-3.6v-1.4" />
-                        <path className="shackle-pin" d="M2.2 28.2h9.6" />
-                        <circle className="shackle-cap" cx="2" cy="28.2" r="1.1" />
-                        <circle className="shackle-cap" cx="12" cy="28.2" r="1.1" />
-                      </g>
-                    </svg>
-                    <svg className="anchor-icon" viewBox="0 0 36 42" fill="none">
-                      <defs>
-                        <linearGradient id="anchor-metal" x1="5" y1="2" x2="31" y2="39" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#fff1ae" />
-                          <stop offset=".28" stopColor="#e8bd5a" />
-                          <stop offset=".58" stopColor="#93611e" />
-                          <stop offset=".82" stopColor="#d9a943" />
-                          <stop offset="1" stopColor="#f4db87" />
-                        </linearGradient>
-                        <linearGradient id="anchor-highlight" x1="13" y1="8" x2="22" y2="35" gradientUnits="userSpaceOnUse">
-                          <stop stopColor="#fff8ce" stopOpacity=".9" />
-                          <stop offset="1" stopColor="#fff1ae" stopOpacity=".15" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M14.5 2.2Q18-.7 21.5 2.2" stroke="#d7e0e5" strokeWidth="1.7" strokeLinecap="round" />
-                      <circle cx="18" cy="6.5" r="4.4" stroke="url(#anchor-metal)" strokeWidth="2.8" />
-                      <circle cx="18" cy="6.5" r="1.55" fill="#77501c" />
-                      <path d="M18 11v21" stroke="url(#anchor-metal)" strokeWidth="4.5" strokeLinecap="round" />
-                      <path d="M8.2 17.2H27.8" stroke="url(#anchor-metal)" strokeWidth="4" strokeLinecap="round" />
-                      <path d="m7 14.8 3.4 2.4L7 19.6M29 14.8l-3.4 2.4 3.4 2.4" fill="url(#anchor-metal)" stroke="#f1d47c" strokeWidth=".8" strokeLinejoin="round" />
-                      <path d="M4 28.5C5.7 35.6 10.4 39.3 18 39.3s12.3-3.7 14-10.8" stroke="url(#anchor-metal)" strokeWidth="3.7" strokeLinecap="round" />
-                      <path d="m4.2 27.5-2.4 7.1 7-3.3-4.6-3.8ZM31.8 27.5l2.4 7.1-7-3.3 4.6-3.8Z" fill="url(#anchor-metal)" stroke="#f1d47c" strokeWidth=".7" strokeLinejoin="round" />
-                      <path d="M16.7 12.4v16.8M9.5 16.2h10.8" stroke="url(#anchor-highlight)" strokeWidth="1" strokeLinecap="round" />
-                      <path d="m18 30.2 2 2.2-2 2.2-2-2.2 2-2.2Z" fill="#f6df91" stroke="#855818" strokeWidth=".65" />
-                    </svg>
-                  </span>
-                </span>
               </div>
               <img className="cover" src={track.cover || FALLBACK_COVER} alt={`Capa de ${track.title}`} onError={useFallbackCover} />
             </div>
@@ -884,14 +942,11 @@ export default function App() {
         onPlay={() => setPlaying(true)}
         onPause={() => {
           setPlaying(false);
-          clearTimeout(anchorTimerRef.current);
-          setAnchorLifting(false);
-          setAnchorDeploying(true);
-          anchorTimerRef.current = setTimeout(() => setAnchorDeploying(false), 1250);
+          setLoading(false);
         }}
         onWaiting={() => setLoading(true)}
         onPlaying={() => setLoading(false)}
-        onError={() => { setLoading(false); setAnchorLifting(false); setAnchorDeploying(false); setMessage("Não foi possível conectar à transmissão."); }}
+        onError={() => { setPlaying(false); setLoading(false); setMessage("Não foi possível conectar à transmissão."); }}
       />
     </main>
   );

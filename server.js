@@ -56,6 +56,10 @@ function normalizeTitle(value) {
         .trim();
 }
 
+function capitalizeTitle(value) {
+    return String(value || '').replace(/\p{L}/u, (letter) => letter.toLocaleUpperCase('pt-BR'));
+}
+
 function isStationIdentifier(artist, title) {
     const metadata = `${normalizeMetadata(artist)} ${normalizeMetadata(title)}`;
     return STATION_IDENTIFIERS.some((identifier) => metadata.includes(identifier));
@@ -142,15 +146,15 @@ async function fetchRadioStatus() {
             const catalogTrack = stationIdentifier
                 ? null
                 : await findTrackMetadata(current.artist, current.title);
-            let coverUrl = stationIdentifier ? FALLBACK_GIF : current.art;
-
-            // Identificações da rádio não são músicas e devem usar a animação padrão.
-            if (!stationIdentifier && (!coverUrl || coverUrl.includes('generic_song.jpg'))) {
-                coverUrl = catalogTrack?.cover || FALLBACK_GIF;
-            }
+            // A URL de arte da transmissão também pode devolver a capa genérica sem
+            // indicar isso no endereço. Só exibimos capas confirmadas pelo catálogo;
+            // quando não há correspondência, usamos a animação da rádio.
+            const coverUrl = stationIdentifier
+                ? FALLBACK_GIF
+                : catalogTrack?.cover || FALLBACK_GIF;
 
             nowPlaying = {
-                title: catalogTrack?.title || current.title || "Programação ao vivo",
+                title: capitalizeTitle(catalogTrack?.title || current.title || "Programação ao vivo"),
                 artist: catalogTrack?.artist || current.artist || "Rádio Marinha",
                 album: current.album || "Rádio Marinha Online",
                 cover: coverUrl || FALLBACK_GIF,

@@ -21,9 +21,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid #fab932; outline-
 .brand strong { font-size: 1rem; }
 .brand small { margin-top: 3px; color: rgba(255,255,255,.62); font-size: .82rem; letter-spacing: .09em; text-transform: uppercase; }
 .sailing-slogan { position: relative; display: flex !important; flex-direction: column; align-items: center; width: max-content; margin: 0 !important; overflow: visible; line-height: 1; text-transform: none !important; letter-spacing: .025em !important; white-space: nowrap; }
-.slogan-words { display: block; margin-top: -2px; text-align: center; }
-.slogan-wake { position: relative; left: auto; bottom: auto; display: block; flex: 0 0 40px; width: 100%; height: 40px; overflow: hidden; pointer-events: none; -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 96%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 96%, transparent 100%); }
-.slogan-wave-canvas { display: block; width: 100%; height: 100%; }
+.slogan-words { position: relative; z-index: 1; display: block; margin-top: 4px; text-align: center; }
+.slogan-wake { position: relative; z-index: 2; left: auto; bottom: auto; display: block; flex: 0 0 42px; width: 100%; height: 42px; overflow: visible; pointer-events: none; }
+.slogan-wave-canvas { position: absolute; z-index: 2; top: -22px; left: 0; display: block; width: 100%; height: 106px; pointer-events: none; -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 96%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 96%, transparent 100%); }
 .live { display: flex; align-items: center; gap: 9px; color: #fff; font-size: .72rem; font-weight: 800; letter-spacing: .14em; }
 .live-dot { width: 9px; height: 9px; border: 0; border-radius: 50%; background: rgba(255,255,255,.35); box-shadow: none; transition: background .35s ease, box-shadow .35s ease, border-color .35s ease; }
 .is-playing .live-dot { background: #ef525c; box-shadow: 0 0 0 6px rgba(239,82,92,.15); animation: livePulseRed 1.8s infinite; }
@@ -47,21 +47,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid #fab932; outline-
 .is-playing .eyebrow { color: transparent; animation: labelShine 3s linear infinite; }
 .is-playing .now-indicator { animation: atSea 4.2s ease-in-out infinite; border-color: rgba(216,177,92,.38); box-shadow: 0 7px 20px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.06); }
 .is-loading .now-indicator { background: linear-gradient(90deg, rgba(216,177,92,.04), rgba(216,177,92,.13), rgba(216,177,92,.04)) 0 0 / 200% 100%; animation: suspendingGlow 1.4s linear infinite; }
-.anchor-slot { position: relative; display: block; width: 21px; height: 33px; flex: 0 0 21px; margin: -7px -2px -21px 0; overflow: hidden; }
-.anchor-rig { position: absolute; inset: 0; display: block; color: #e5c46f; transform-origin: 50% 0; filter: drop-shadow(0 3px 4px rgba(0,0,0,.38)); animation: anchorMoored 3.8s ease-in-out infinite; }
-.anchor-chain { position: absolute; top: -10px; left: 7px; width: 7px; height: 25px; overflow: visible; transform-origin: 50% 0; filter: drop-shadow(0 1px 1px rgba(0,0,0,.46)); }
-.chain-link-shadow, .chain-link-metal, .chain-link-glint, .shackle-pin { fill: none; stroke-linecap: round; stroke-linejoin: round; }
-.chain-link-shadow { stroke: #46515a; stroke-width: 3; }
-.chain-link-metal { stroke: url(#chain-silver); stroke-width: 1.8; }
-.chain-link-glint { stroke: rgba(255,255,255,.78); stroke-width: .48; animation: chainGlint 3.8s ease-in-out infinite; }
-.shackle-pin { stroke: url(#chain-silver); stroke-width: 1.85; }
-.shackle-cap { fill: #dce5ea; stroke: #5d6871; stroke-width: .5; }
-.anchor-icon { position: absolute; top: 10px; left: 1px; width: 19px; height: 23px; overflow: visible; filter: drop-shadow(0 1px 1px rgba(73,43,9,.38)); }
-.anchor-lifting .anchor-rig { animation: anchorRetrieve 1.25s cubic-bezier(.4,0,.18,1) forwards; }
-.anchor-lifting .anchor-chain { animation: chainRetrieve 1.05s cubic-bezier(.45,0,.2,1) forwards; }
-.anchor-deploying .anchor-rig { animation: anchorDeploy 1.25s cubic-bezier(.2,.72,.25,1) forwards; }
-.anchor-deploying .anchor-chain { animation: chainDeploy 1.05s cubic-bezier(.2,.72,.25,1) forwards; }
-.is-playing:not(.anchor-lifting) .anchor-rig { visibility: hidden; opacity: 0; transform: translateY(-17px) scale(.55); animation: none; }
 h1 { max-width: 100%; margin: 0; font-size: clamp(2rem, 2.7vw, 3.5rem); line-height: 1.02; letter-spacing: -.045em; overflow-wrap: break-word; word-break: normal; hyphens: none; text-wrap: balance; }
 .artist { margin: 14px 0 0; color: rgba(255,255,255,.84); font-size: clamp(.9rem, 1.15vw, 1.2rem); line-height: 1.35; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; overflow-wrap: break-word; }
 .album { margin: 8px 0 0; color: rgba(255,255,255,.5); font-size: .86rem; }
@@ -181,12 +166,6 @@ footer { border-top: 1px solid rgba(172,207,221,.1); color: rgba(255,255,255,.4)
 @keyframes labelShine { to { background-position-x: -200%; } }
 @keyframes atSea { 0%, 100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(-1px) rotate(-.25deg); } 70% { transform: translateY(1px) rotate(.25deg); } }
 @keyframes anchorLift { 0%, 100% { transform: translateY(2px); opacity: .35; } 50% { transform: translateY(-2px); opacity: 1; } }
-@keyframes anchorMoored { 0%, 100% { transform: translateY(0) rotate(-4deg); } 24% { transform: translateY(.7px) rotate(-1deg); } 52% { transform: translateY(1.2px) rotate(4deg); } 76% { transform: translateY(.5px) rotate(1deg); } }
-@keyframes chainGlint { 0%, 100% { opacity: .32; } 42% { opacity: .95; } 68% { opacity: .48; } }
-@keyframes anchorRetrieve { 0% { opacity: 1; transform: translateY(0) scale(1); } 14% { opacity: 1; transform: translateY(1.5px) scale(1); } 76% { opacity: 1; transform: translateY(-22px) scale(.92); } 100% { opacity: 0; transform: translateY(-35px) scale(.78); } }
-@keyframes chainRetrieve { 0%, 14% { opacity: 1; transform: scaleY(1); } 80% { opacity: 1; transform: scaleY(.18); } 100% { opacity: 0; transform: scaleY(0); } }
-@keyframes anchorDeploy { 0% { opacity: 0; transform: translateY(-35px) scale(.78); } 18% { opacity: .75; } 72% { opacity: 1; transform: translateY(1.5px) scale(1); } 86% { transform: translateY(-1px) scale(1); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes chainDeploy { 0% { opacity: 0; transform: scaleY(0); } 18% { opacity: 1; } 78% { transform: scaleY(1); } 100% { opacity: 1; transform: scaleY(1); } }
 @keyframes suspendBars { 0%, 100% { transform: scaleY(.45); } 50% { transform: scaleY(1.75); } }
 @keyframes suspendingGlow { to { background-position-x: -200%; } }
 
@@ -279,7 +258,8 @@ footer { border-top: 1px solid rgba(172,207,221,.1); color: rgba(255,255,255,.4)
   .radio-brand-logo { width: 84px; height: 48px; }
   .brand-copy { min-width: 0; }
   .brand small.sailing-slogan { display: flex; width: 190px; max-width: 190px; font-size: clamp(.58rem, 2.65vw, .7rem); }
-  .slogan-wake { height: 34px; }
+  .slogan-wake { flex-basis: 36px; height: 36px; }
+  .slogan-wave-canvas { top: -18px; height: 90px; }
   .live { gap: 6px; font-size: .58rem; letter-spacing: .08em; }
   .live-dot { width: 8px; height: 8px; }
   .is-playing .live-dot { box-shadow: 0 0 0 4px rgba(233,67,77,.15); }
@@ -329,7 +309,8 @@ footer { border-top: 1px solid rgba(172,207,221,.1); color: rgba(255,255,255,.4)
 @media (max-width: 380px) {
   .radio-brand-logo { width: 74px; height: 42px; }
   .brand small.sailing-slogan { width: 176px; max-width: 176px; font-size: .55rem; }
-  .slogan-wake { height: 30px; }
+  .slogan-wake { flex-basis: 32px; height: 32px; }
+  .slogan-wave-canvas { top: -16px; height: 86px; }
   .live { font-size: 0; }
   .live::after { content: "NO AR"; font-size: .52rem; }
   .hero { padding-inline: 12px; }
@@ -348,6 +329,4 @@ footer { border-top: 1px solid rgba(172,207,221,.1); color: rgba(255,255,255,.4)
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-  .anchor-lifting .anchor-rig, .is-playing .anchor-rig { visibility: hidden; opacity: 0; }
-  .anchor-deploying .anchor-rig { visibility: visible; opacity: 1; transform: none; }
 }
