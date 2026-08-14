@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 
 const STREAM_URL = "https://stm0.inovativa.net/listen/radiomarinha/radio.mp3";
@@ -23,6 +23,13 @@ const initialTrack = {
   artist: "Programação ao vivo",
   album: "Rádio Marinha Online",
   cover: FALLBACK_COVER,
+  elapsed: 0,
+  duration: 0,
+  durationReliable: false,
+  syncAllowed: false,
+  playbackId: null,
+  playedAt: null,
+  playbackSampledAt: 0,
   updatedAt: null
 };
 
@@ -43,6 +50,285 @@ const ActionIcon = ({ name }) => {
   };
   return <svg className="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 };
+
+const LRC_TIMESTAMP = /\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]/g;
+
+function parseLyrics(lyrics) {
+  const lyricLines = String(lyrics || "").split("\n");
+  const offsetLine = lyricLines.find((line) => /^\[offset:[+-]?\d+\]/i.test(line.trim()));
+  const offsetMatch = offsetLine?.trim().match(/^\[offset:([+-]?\d+)\]/i);
+  const offsetSeconds = offsetMatch ? Number(offsetMatch[1]) / 1000 : 0;
+  const plainRows = [];
+  const timedRows = [];
+
+  lyricLines.forEach((rawLine, rowIndex) => {
+    if (/^\[(?:ar|al|ti|by|offset|length|re):/i.test(rawLine.trim())) return;
+    const timestamps = [...rawLine.matchAll(LRC_TIMESTAMP)].map((match) => (
+      Number(match[1]) * 60 + Number(match[2])
+    ));
+    const text = rawLine.replace(LRC_TIMESTAMP, "").trim();
+    plainRows.push({ id: `plain-${rowIndex}`, text, blank: !text });
+    timestamps.forEach((time, timeIndex) => {
+      if (text) timedRows.push({ id: `timed-${rowIndex}-${timeIndex}`, text, time: Math.max(0, time + offsetSeconds) });
+    });
+  });
+
+  if (timedRows.length > 1) {
+    timedRows.sort((first, second) => first.time - second.time);
+    return { synced: true, rows: timedRows };
+  }
+  return { synced: false, rows: plainRows };
+}
+
+function estimateLyricsDuration(rows) {
+  const textRows = rows.filter((row) => !row.blank);
+  const wordCount = textRows.reduce((total, row) => total + row.text.split(/\s+/).length, 0);
+  const stanzaBreaks = rows.filter((row) => row.blank).length;
+  const singingTime = wordCount / 1.25;
+  const phrasingTime = textRows.length * .8 + stanzaBreaks * 3;
+  return Math.max(180, Math.min(480, singingTime + phrasingTime + 40));
+}
+
+function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyrics, playbackSampledAt, trackKey, title }) {
+  const parsedLyrics = useMemo(() => parseLyrics(lyrics), [lyrics]);
+  const scrollRef = useRef(null);
+  const animationFrameRef = useRef(0);
+  const activeLineRef = useRef(-1);
+  const lineRefs = useRef([]);
+  const pointerStartRef = useRef(null);
+  const playbackRef = useRef({
+    anchorElapsed: null,
+    anchorMediaTime: null,
+    elapsed: 0,
+    sampledAt: performance.now(),
+    trackKey: null
+  });
+  const latencyRef = useRef(0);
+  const [activeLine, setActiveLine] = useState(-1);
+  const [manualPause, setManualPause] = useState(false);
+  const [timingAdjustment, setTimingAdjustment] = useState(0);
+  const [followEnabled, setFollowEnabled] = useState(() => {
+    const storedPreference = getStored("radio-lyrics-follow", null);
+    if (typeof storedPreference === "boolean") return storedPreference;
+    return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
+
+  useEffect(() => {
+    latencyRef.current = Math.max(0, Number(latency) || 0);
+  }, [latency]);
+
+  useEffect(() => {
+    const previousPlayback = playbackRef.current;
+    const changedTrack = previousPlayback.trackKey !== trackKey;
+    playbackRef.current = {
+      ...previousPlayback,
+      anchorElapsed: changedTrack ? null : previousPlayback.anchorElapsed,
+      anchorMediaTime: changedTrack ? null : previousPlayback.anchorMediaTime,
+      elapsed: Math.max(0, Number(elapsed) || 0),
+      sampledAt: Number(playbackSampledAt) || performance.now(),
+      trackKey
+    };
+  }, [elapsed, playbackSampledAt, trackKey]);
+
+  useEffect(() => {
+    cancelAnimationFrame(animationFrameRef.current);
+    activeLineRef.current = -1;
+    setActiveLine(-1);
+    setManualPause(false);
+    setTimingAdjustment(0);
+    lineRefs.current = [];
+    const animationFrame = requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    });
+    return () => cancelAnimationFrame(animationFrame);
+  }, [lyrics, trackKey]);
+
+  const following = active && followEnabled && !manualPause;
+
+  useEffect(() => {
+    cancelAnimationFrame(animationFrameRef.current);
+    if (!following || !parsedLyrics.rows.length) return;
+
+    let previousFrame = performance.now();
+    const updateScroll = (now) => {
+      const scroller = scrollRef.current;
+      if (!scroller) return;
+      const delta = Math.min(64, Math.max(0, now - previousFrame));
+      previousFrame = now;
+      const playback = playbackRef.current;
+      const serverElapsed = playback.elapsed + (now - playback.sampledAt) / 1000;
+      const mediaTime = audioRef.current?.currentTime;
+      const hasMediaClock = Number.isFinite(mediaTime) && mediaTime >= 0;
+      if (hasMediaClock && (
+        playback.anchorMediaTime === null
+        || mediaTime < playback.anchorMediaTime - .75
+      )) {
+        playback.anchorMediaTime = mediaTime;
+        playback.anchorElapsed = Math.max(0, serverElapsed - latencyRef.current);
+      }
+      const audibleElapsed = hasMediaClock && playback.anchorMediaTime !== null
+        ? playback.anchorElapsed + Math.max(0, mediaTime - playback.anchorMediaTime)
+        : serverElapsed - latencyRef.current;
+      const currentElapsed = Math.max(0, audibleElapsed + timingAdjustment);
+      const maximumScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      let targetScroll = scroller.scrollTop;
+
+      if (parsedLyrics.synced) {
+        let currentIndex = -1;
+        for (let index = parsedLyrics.rows.length - 1; index >= 0; index -= 1) {
+          if (currentElapsed >= parsedLyrics.rows[index].time) {
+            currentIndex = index;
+            break;
+          }
+        }
+        if (currentIndex !== activeLineRef.current) {
+          activeLineRef.current = currentIndex;
+          setActiveLine(currentIndex);
+        }
+        if (currentIndex >= 0) {
+          const line = lineRefs.current[currentIndex];
+          if (line) targetScroll = line.offsetTop - scroller.clientHeight * .38 + line.offsetHeight / 2;
+        } else {
+          targetScroll = 0;
+        }
+      } else {
+        if (activeLineRef.current !== -1) {
+          activeLineRef.current = -1;
+          setActiveLine(-1);
+        }
+        const estimatedDuration = Math.max(1, Number(duration) || estimateLyricsDuration(parsedLyrics.rows));
+        const introduction = Math.min(12, estimatedDuration * .06);
+        const scrollingDuration = Math.max(1, estimatedDuration - introduction);
+        const progress = Math.max(0, Math.min(1, (currentElapsed - introduction) / scrollingDuration));
+        targetScroll = maximumScroll * progress * .96;
+      }
+
+      targetScroll = Math.max(0, Math.min(maximumScroll, targetScroll));
+      const easingDuration = parsedLyrics.synced ? 520 : 900;
+      const easing = 1 - Math.exp(-delta / easingDuration);
+      scroller.scrollTop += (targetScroll - scroller.scrollTop) * easing;
+      animationFrameRef.current = requestAnimationFrame(updateScroll);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(updateScroll);
+    return () => cancelAnimationFrame(animationFrameRef.current);
+  }, [audioRef, duration, following, parsedLyrics, timingAdjustment, trackKey]);
+
+  const pauseForInteraction = () => {
+    if (followEnabled && !manualPause) setManualPause(true);
+  };
+
+  const toggleFollowing = () => {
+    if (manualPause) {
+      setManualPause(false);
+      return;
+    }
+    setFollowEnabled((current) => {
+      const next = !current;
+      localStorage.setItem("radio-lyrics-follow", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const adjustTiming = (seconds) => {
+    setTimingAdjustment((current) => Math.max(-30, Math.min(30, current + seconds)));
+  };
+
+  const controlLabel = manualPause
+    ? "Retomar rolagem"
+    : followEnabled && active
+      ? "Pausar rolagem"
+      : followEnabled
+        ? "Automático ativado"
+        : "Acompanhar letra";
+  const controlClass = following ? "active" : followEnabled && !manualPause ? "ready" : "";
+  const controlSymbol = following ? "Ⅱ" : followEnabled && !manualPause ? "✓" : "▶";
+
+  return (
+    <div className="lyrics-view">
+      <div className="lyrics-toolbar">
+        <span className="lyrics-sync-status" role="status" aria-live="polite">
+          <i aria-hidden="true" />
+          {manualPause ? "Rolagem pausada" : parsedLyrics.synced ? "Sincronizada" : "Acompanhamento aproximado"}
+        </span>
+        <div className="lyrics-toolbar-actions">
+          <div className="lyrics-timing" role="group" aria-label="Ajustar a sincronia da letra">
+            <span className="lyrics-timing-value" role="status" aria-live="polite">
+              {timingAdjustment === 0
+                ? "Ajuste"
+                : `${timingAdjustment > 0 ? "+" : ""}${timingAdjustment} s`}
+            </span>
+            <button
+              type="button"
+              aria-label="Atrasar a letra em 5 segundos"
+              title="Atrasar a letra em 5 segundos"
+              onClick={() => adjustTiming(-5)}
+            >
+              −5 s
+            </button>
+            <button
+              type="button"
+              aria-label="Adiantar a letra em 5 segundos"
+              title="Adiantar a letra em 5 segundos"
+              onClick={() => adjustTiming(5)}
+            >
+              +5 s
+            </button>
+          </div>
+          <button
+            type="button"
+            className={`lyrics-follow ${controlClass}`}
+            aria-label={controlLabel}
+            aria-pressed={followEnabled && !manualPause}
+            onClick={toggleFollowing}
+          >
+            <span aria-hidden="true">{controlSymbol}</span>
+            {controlLabel}
+          </button>
+        </div>
+      </div>
+      <div
+        ref={scrollRef}
+        className="lyrics-scroll"
+        tabIndex="0"
+        aria-label={`Letra de ${title}`}
+        onWheel={pauseForInteraction}
+        onKeyDown={(event) => {
+          if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) pauseForInteraction();
+        }}
+        onPointerDown={(event) => {
+          pointerStartRef.current = { x: event.clientX, y: event.clientY };
+          if (event.pointerType !== "mouse") pauseForInteraction();
+        }}
+        onPointerMove={(event) => {
+          const start = pointerStartRef.current;
+          if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+            pointerStartRef.current = null;
+            pauseForInteraction();
+          }
+        }}
+        onPointerUp={() => { pointerStartRef.current = null; }}
+        onPointerCancel={() => {
+          if (pointerStartRef.current) pauseForInteraction();
+          pointerStartRef.current = null;
+        }}
+      >
+        {parsedLyrics.rows.map((row, index) => row.blank
+          ? <span className="lyric-break" key={row.id} aria-hidden="true" />
+          : (
+            <p
+              ref={(element) => { lineRefs.current[index] = element; }}
+              className={`lyric-line ${parsedLyrics.synced && index === activeLine ? "is-current" : ""}`}
+              aria-current={parsedLyrics.synced && index === activeLine ? "true" : undefined}
+              key={row.id}
+            >
+              {row.text}
+            </p>
+          ))}
+      </div>
+    </div>
+  );
+}
 
 function SloganOceanWave({ active }) {
   const canvasRef = useRef(null);
@@ -415,7 +701,7 @@ function SloganOceanWave({ active }) {
         const pendulumOffset = (
           Math.sin(pendulumTime * .78)
           + Math.sin(pendulumTime * 1.31 + .9) * .28
-        ) * 1.45 * detailScale * (.04 + deployedAmount * .96);
+        ) * 1.7 * detailScale * (.04 + deployedAmount * .96);
         const stowedOffsetX = anchorTravel * 2.2 * detailScale;
         const chainEndX = bowX - .4 * scale + pendulumOffset + stowedOffsetX;
         const pendulumAngle = pendulumOffset / Math.max(18, chainLength) * .72;
@@ -668,9 +954,21 @@ function getCurrentProgram(date = new Date()) {
 export default function App() {
   const audioRef = useRef(null);
   const timerRef = useRef(null);
+  const displayedTrackRef = useRef(initialTrack);
+  const pendingTrackRef = useRef(null);
+  const pendingTrackTimerRef = useRef(0);
+  const playingRef = useRef(false);
+  const streamRequestStartedAtRef = useRef(0);
+  const streamWaitingStartedAtRef = useRef(0);
+  const streamWaitingMediaTimeRef = useRef(0);
+  const streamHasStartedRef = useRef(false);
+  const streamLatencyRef = useRef(0);
+  const streamTransportOverheadRef = useRef(0);
+  const streamLatencyMeasuredAtRef = useRef(0);
   const [track, setTrack] = useState(initialTrack);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [streamLatency, setStreamLatency] = useState(0);
   const [volume, setVolume] = useState(() => getStored("radio-volume", 0.85));
   const [lastVolume, setLastVolume] = useState(0.85);
   const [message, setMessage] = useState("");
@@ -679,38 +977,90 @@ export default function App() {
   const [timerOpen, setTimerOpen] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [lyrics, setLyrics] = useState("");
+  const [lyricsDuration, setLyricsDuration] = useState(0);
+  const [lyricsLoading, setLyricsLoading] = useState(true);
   const [artistInfo, setArtistInfo] = useState(null);
-  const [contentLoading, setContentLoading] = useState(true);
+  const [artistLoading, setArtistLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [scheduleDay, setScheduleDay] = useState(() => Math.min(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, 6));
   const [currentProgram, setCurrentProgram] = useState(() => getCurrentProgram());
 
-  const trackKey = `${track.artist}—${track.title}`;
-  const favorite = favorites.some((item) => item.key === trackKey);
+  displayedTrackRef.current = track;
+  playingRef.current = playing;
+  const favoriteKey = `${track.artist}—${track.title}`;
+  const playbackKey = `${favoriteKey}—${track.playbackId || track.playedAt || track.updatedAt || "atual"}`;
+  const favorite = favorites.some((item) => item.key === favoriteKey);
+
+  function displayTrack(nextTrack) {
+    clearTimeout(pendingTrackTimerRef.current);
+    pendingTrackTimerRef.current = 0;
+    pendingTrackRef.current = null;
+    displayedTrackRef.current = nextTrack;
+    setTrack(nextTrack);
+  }
+
+  function flushPendingTrack() {
+    if (pendingTrackRef.current) displayTrack(pendingTrackRef.current);
+  }
 
   useEffect(() => {
     let active = true;
+    let requestInFlight = false;
     async function loadTrack() {
+      if (requestInFlight) return;
+      requestInFlight = true;
       try {
         const response = await fetch("/api/now-playing", { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (!active) return;
-        setTrack({
+        const receivedAt = performance.now();
+        const incomingTrack = {
           title: data.title || "Programação ao vivo",
           artist: data.artist || "Rádio Marinha",
           album: data.album || "Rádio Marinha Online",
           cover: data.cover || FALLBACK_COVER,
+          elapsed: Number(data.elapsed) || 0,
+          duration: Number(data.duration) || 0,
+          durationReliable: Boolean(data.durationReliable),
+          syncAllowed: Boolean(data.syncAllowed),
+          playbackId: data.playbackId || null,
+          playedAt: Number(data.playedAt) || null,
+          playbackSampledAt: receivedAt,
           updatedAt: data.updatedAt || null
-        });
+        };
+        const displayedTrack = displayedTrackRef.current;
+        const incomingIdentity = incomingTrack.playbackId || incomingTrack.playedAt;
+        const displayedIdentity = displayedTrack.playbackId || displayedTrack.playedAt;
+        const isNewPlayback = Boolean(
+          incomingIdentity && displayedIdentity && incomingIdentity !== displayedIdentity
+        );
+        const remainingTransportDelay = streamLatencyRef.current - incomingTrack.elapsed;
+
+        if (playingRef.current && isNewPlayback && remainingTransportDelay > .15) {
+          clearTimeout(pendingTrackTimerRef.current);
+          pendingTrackRef.current = incomingTrack;
+          pendingTrackTimerRef.current = window.setTimeout(
+            () => displayTrack(incomingTrack),
+            remainingTransportDelay * 1000
+          );
+        } else {
+          displayTrack(incomingTrack);
+        }
         setMessage("");
       } catch {
         if (active) setMessage("Os dados da programação estão temporariamente indisponíveis.");
+      } finally {
+        requestInFlight = false;
       }
     }
     loadTrack();
     const interval = setInterval(loadTrack, 5000);
-    return () => { active = false; clearInterval(interval); };
+    return () => {
+      active = false;
+      clearInterval(interval);
+      clearTimeout(pendingTrackTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -733,51 +1083,197 @@ export default function App() {
       album: "Rádio Marinha",
       artwork: [{ src: new URL(track.cover || FALLBACK_COVER, window.location.href).href }]
     });
-    navigator.mediaSession.setActionHandler("play", () => audioRef.current?.play());
+    navigator.mediaSession.setActionHandler("play", () => {
+      if (!playing) void startRadio();
+    });
     navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
-  }, [track]);
+  }, [loading, playing, track]);
 
   useEffect(() => {
-    if (!track.artist || !track.title || track.artist === "Rádio Marinha") return;
+    if (!track.artist || !track.title || track.artist === "Rádio Marinha") {
+      setLyrics("");
+      setLyricsDuration(0);
+      setArtistInfo(null);
+      setLyricsLoading(false);
+      setArtistLoading(false);
+      return;
+    }
     const controller = new AbortController();
-    setContentLoading(true);
+    let active = true;
+    const lyricsParams = new URLSearchParams({
+      artist: track.artist,
+      title: track.title,
+      syncAllowed: track.syncAllowed ? "1" : "0"
+    });
+    if (track.album && track.album !== "Rádio Marinha Online") {
+      lyricsParams.set("album", track.album);
+    }
+    if (track.durationReliable && track.duration) {
+      lyricsParams.set("duration", String(Math.round(track.duration)));
+    }
+    setLyricsLoading(true);
+    setArtistLoading(true);
     setLyrics("");
+    setLyricsDuration(0);
     setArtistInfo(null);
 
-    Promise.allSettled([
-      fetch(`/api/lyrics?artist=${encodeURIComponent(track.artist)}&title=${encodeURIComponent(track.title)}`, { signal: controller.signal })
-        .then((response) => response.ok ? response.json() : { lyrics: null }),
-      fetch(`/api/artist?name=${encodeURIComponent(track.artist)}`, { signal: controller.signal })
-        .then((response) => response.ok ? response.json() : null)
-    ]).then(([lyricsResult, artistResult]) => {
-      if (lyricsResult.status === "fulfilled") setLyrics(lyricsResult.value.lyrics || "");
-      if (artistResult.status === "fulfilled") setArtistInfo(artistResult.value);
-      setContentLoading(false);
-    });
+    fetch(`/api/lyrics?${lyricsParams}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : { lyrics: null, duration: 0 })
+      .then((lyricsResult) => {
+        if (!active) return;
+        const receivedLyrics = String(lyricsResult.lyrics || "");
+        setLyrics(lyricsResult.synced === false
+          ? receivedLyrics.replace(/\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]/g, "")
+          : receivedLyrics);
+        setLyricsDuration(Number(lyricsResult.duration) || 0);
+      })
+      .catch(() => {})
+      .finally(() => { if (active) setLyricsLoading(false); });
 
-    return () => controller.abort();
-  }, [track.artist, track.title]);
+    fetch(`/api/artist?name=${encodeURIComponent(track.artist)}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : null)
+      .then((artistResult) => { if (active) setArtistInfo(artistResult); })
+      .catch(() => {})
+      .finally(() => { if (active) setArtistLoading(false); });
+
+    return () => { active = false; controller.abort(); };
+  }, [track.album, track.artist, track.duration, track.durationReliable, track.playbackId, track.syncAllowed, track.title]);
 
   useEffect(() => () => {
     clearInterval(timerRef.current);
   }, []);
 
-  async function toggleRadio() {
+  function getBufferedLatency() {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.currentTime) || !audio.buffered.length) return null;
+    try {
+      for (let index = 0; index < audio.buffered.length; index += 1) {
+        const rangeStart = audio.buffered.start(index);
+        const rangeEnd = audio.buffered.end(index);
+        if (audio.currentTime >= rangeStart - .05 && audio.currentTime <= rangeEnd + .05) {
+          const bufferedAhead = rangeEnd - audio.currentTime;
+          return Number.isFinite(bufferedAhead) && bufferedAhead >= 0 && bufferedAhead <= 45
+            ? bufferedAhead
+            : null;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function commitStreamLatency(value, immediate = false) {
+    if (!Number.isFinite(value)) return;
+    const measured = Math.max(0, Math.min(45, value));
+    const current = streamLatencyRef.current;
+    const next = immediate
+      ? measured
+      : measured > current
+        ? current * .65 + measured * .35
+        : current * .92 + measured * .08;
+    if (Math.abs(next - current) < .02) return;
+    streamLatencyRef.current = next;
+    setStreamLatency(next);
+  }
+
+  function measureStreamLatency(force = false) {
+    const now = performance.now();
+    if (!force && now - streamLatencyMeasuredAtRef.current < 1000) return;
+    streamLatencyMeasuredAtRef.current = now;
+    const bufferedAhead = getBufferedLatency();
+    if (bufferedAhead !== null) {
+      commitStreamLatency(bufferedAhead + streamTransportOverheadRef.current);
+    }
+  }
+
+  function handleAudioWaiting() {
+    if (streamHasStartedRef.current && !streamWaitingStartedAtRef.current) {
+      streamWaitingStartedAtRef.current = performance.now();
+      streamWaitingMediaTimeRef.current = Number(audioRef.current?.currentTime) || 0;
+    }
+    setLoading(true);
+  }
+
+  function handleAudioPlaying() {
+    const now = performance.now();
+    const bufferedAhead = getBufferedLatency();
+    const waitingDuration = streamWaitingStartedAtRef.current
+      ? Math.max(0, (now - streamWaitingStartedAtRef.current) / 1000)
+      : 0;
+    const mediaTime = Number(audioRef.current?.currentTime) || 0;
+    const mediaAdvancedWhileWaiting = Math.max(0, mediaTime - streamWaitingMediaTimeRef.current);
+    const stalledFor = Math.max(0, waitingDuration - mediaAdvancedWhileWaiting);
+
+    if (!streamHasStartedRef.current) {
+      const startupLatency = streamRequestStartedAtRef.current
+        ? Math.max(0, (now - streamRequestStartedAtRef.current) / 1000)
+        : 0;
+      streamTransportOverheadRef.current = 0;
+      commitStreamLatency(
+        bufferedAhead === null ? Math.min(startupLatency, 3) : bufferedAhead,
+        true
+      );
+      streamHasStartedRef.current = true;
+    } else {
+      if (stalledFor) {
+        streamTransportOverheadRef.current = Math.min(
+          45,
+          streamTransportOverheadRef.current + stalledFor
+        );
+      }
+      if (bufferedAhead !== null) {
+        commitStreamLatency(
+          bufferedAhead + streamTransportOverheadRef.current,
+          stalledFor > 0
+        );
+      } else if (stalledFor) {
+        commitStreamLatency(streamLatencyRef.current + stalledFor, true);
+      }
+    }
+
+    streamWaitingStartedAtRef.current = 0;
+    streamWaitingMediaTimeRef.current = 0;
+    setLoading(false);
+  }
+
+  function handleAudioPause() {
+    playingRef.current = false;
+    setPlaying(false);
+    setLoading(false);
+    streamWaitingStartedAtRef.current = 0;
+    streamWaitingMediaTimeRef.current = 0;
+    flushPendingTrack();
+  }
+
+  async function startRadio() {
     if (!audioRef.current || loading) return;
     setMessage("");
-    if (playing) {
-      audioRef.current.pause();
-      return;
-    }
     try {
       setLoading(true);
+      streamRequestStartedAtRef.current = performance.now();
+      streamWaitingStartedAtRef.current = 0;
+      streamWaitingMediaTimeRef.current = 0;
+      streamHasStartedRef.current = false;
+      streamLatencyMeasuredAtRef.current = 0;
+      streamLatencyRef.current = 0;
+      streamTransportOverheadRef.current = 0;
+      setStreamLatency(0);
       audioRef.current.src = `${STREAM_URL}?live=${Date.now()}`;
       await audioRef.current.play();
     } catch {
       setMessage("Não foi possível iniciar o áudio. Tente novamente.");
-    } finally {
       setLoading(false);
     }
+  }
+
+  async function toggleRadio() {
+    if (!audioRef.current || loading) return;
+    if (playing) {
+      audioRef.current.pause();
+      return;
+    }
+    await startRadio();
   }
 
   function toggleMute() {
@@ -791,8 +1287,8 @@ export default function App() {
 
   function toggleFavorite() {
     const next = favorite
-      ? favorites.filter((item) => item.key !== trackKey)
-      : [{ key: trackKey, ...track }, ...favorites].slice(0, 30);
+      ? favorites.filter((item) => item.key !== favoriteKey)
+      : [{ key: favoriteKey, ...track }, ...favorites].slice(0, 30);
     setFavorites(next);
     localStorage.setItem("radio-favorites", JSON.stringify(next));
   }
@@ -909,8 +1405,8 @@ export default function App() {
 
             <div className="tab-content">
               {panel === "radio" && <div className="welcome-content"><p className="section-kicker">CONTEÚDO DA FAIXA</p><h2>Conheça o que está tocando</h2><p>Abra a letra da música ou conheça a trajetória do artista enquanto acompanha a transmissão.</p><div className="content-shortcuts"><button onClick={() => setPanel("lyrics")}>Ver letra <span>→</span></button><button onClick={() => setPanel("artist")}>Sobre o artista <span>→</span></button></div></div>}
-              {panel === "lyrics" && <div className="lyrics-content"><div className="content-heading"><div><p className="section-kicker">LETRA</p><h2>{track.title}</h2></div><span>{track.artist}</span></div>{contentLoading ? <div className="content-loading"><span className="spinner" /> Buscando letra…</div> : lyrics ? <div className="lyrics-scroll">{lyrics.split("\n").map((line, index) => { const clean = line.replace(/^\[\d{2}:\d{2}(?:\.\d{2,3})?\]\s*/, ""); return clean ? <p key={`${index}-${clean}`}>{clean}</p> : <br key={index} />; })}</div> : <div className="empty-state"><strong>Letra não disponível</strong><p>Não encontramos uma letra confiável para esta faixa.</p></div>}</div>}
-              {panel === "artist" && <div className="artist-content">{contentLoading ? <div className="content-loading"><span className="spinner" /> Buscando artista…</div> : artistInfo?.biography ? <><div className="artist-heading">{artistInfo.image && <img src={artistInfo.image} alt={artistInfo.name} />}<div><p className="section-kicker">SOBRE O ARTISTA</p><h2>{artistInfo.name || track.artist}</h2><span>{[artistInfo.genre, artistInfo.country].filter(Boolean).join(" • ")}</span></div></div><p className="biography">{artistInfo.biography}</p></> : <div className="empty-state"><strong>História não disponível</strong><p>A biografia de {track.artist} ainda não foi encontrada em nossa fonte.</p></div>}</div>}
+              {panel === "lyrics" && <div className="lyrics-content"><div className="content-heading"><div><p className="section-kicker">LETRA</p><h2>{track.title}</h2></div><span>{track.artist}</span></div>{lyricsLoading ? <div className="content-loading"><span className="spinner" /> Buscando letra…</div> : lyrics ? <AutoScrollingLyrics active={playing && !loading} audioRef={audioRef} duration={lyricsDuration || (track.durationReliable ? track.duration : 0)} elapsed={track.elapsed} latency={streamLatency} lyrics={lyrics} playbackSampledAt={track.playbackSampledAt} trackKey={playbackKey} title={track.title} /> : <div className="empty-state"><strong>Letra não disponível</strong><p>Não encontramos uma letra confiável para esta faixa.</p></div>}</div>}
+              {panel === "artist" && <div className="artist-content">{artistLoading ? <div className="content-loading"><span className="spinner" /> Buscando artista…</div> : artistInfo?.biography ? <><div className="artist-heading">{artistInfo.image && <img src={artistInfo.image} alt={artistInfo.name} />}<div><p className="section-kicker">SOBRE O ARTISTA</p><h2>{artistInfo.name || track.artist}</h2><span>{[artistInfo.genre, artistInfo.country].filter(Boolean).join(" • ")}</span></div></div><p className="biography">{artistInfo.biography}</p></> : <div className="empty-state"><strong>História não disponível</strong><p>A biografia de {track.artist} ainda não foi encontrada em nossa fonte.</p></div>}</div>}
               {panel === "favorites" && <div><h2>Suas músicas favoritas</h2>{favorites.length ? <ul>{favorites.map((item) => <li key={item.key}><img src={item.cover || FALLBACK_COVER} alt="" onError={useFallbackCover} /><span><strong>{item.title}</strong><small>{item.artist}</small></span><button aria-label={`Remover ${item.title}`} onClick={() => { const next = favorites.filter((favoriteItem) => favoriteItem.key !== item.key); setFavorites(next); localStorage.setItem("radio-favorites", JSON.stringify(next)); }}>×</button></li>)}</ul> : <p>As músicas que você favoritar aparecerão aqui.</p>}</div>}
             </div>
           </section>
@@ -939,14 +1435,23 @@ export default function App() {
       <audio
         ref={audioRef}
         preload="none"
-        onPlay={() => setPlaying(true)}
-        onPause={() => {
+        onPlay={() => {
+          playingRef.current = true;
+          setPlaying(true);
+        }}
+        onPause={handleAudioPause}
+        onWaiting={handleAudioWaiting}
+        onPlaying={handleAudioPlaying}
+        onProgress={() => measureStreamLatency()}
+        onTimeUpdate={() => measureStreamLatency()}
+        onEnded={handleAudioPause}
+        onError={() => {
+          playingRef.current = false;
           setPlaying(false);
           setLoading(false);
+          setMessage("Não foi possível conectar à transmissão.");
+          flushPendingTrack();
         }}
-        onWaiting={() => setLoading(true)}
-        onPlaying={() => setLoading(false)}
-        onError={() => { setPlaying(false); setLoading(false); setMessage("Não foi possível conectar à transmissão."); }}
       />
     </main>
   );
