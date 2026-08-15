@@ -1,13 +1,14 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
-const ALLOWED_HOSTS = ['radio-marinha-pagina.onrender.com'];
+const ALLOWED_HOSTS = ['radio-marinha-pagina.onrender.com', 'localhost', '127.0.0.1', '.onrender.com'];
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 const DIST_DIR = path.join(__dirname, 'dist');
 
@@ -48,6 +49,9 @@ let nowPlaying = {
     sampledAt: Date.now(),
     updatedAt: null
 };
+let playingNext = null;
+let songHistory = [];
+const catalogCache = new Map();
 let radioStatusFetchInFlight = false;
 const observedTrackDurations = new Map();
 
@@ -122,8 +126,24 @@ function resolveTrackFields(current) {
 }
 
 function isStationIdentifier(artist, title) {
-    const metadata = `${normalizeMetadata(artist)} ${normalizeMetadata(title)}`;
-    return STATION_IDENTIFIERS.some((identifier) => metadata.includes(identifier));
+    const titleMetadata = normalizeMetadata(title);
+    if (!titleMetadata || titleMetadata.length < 3) return true;
+    return STATION_IDENTIFIERS.some((identifier) => titleMetadata.includes(identifier));
+}
+
+function getLevenshteinDistance(a, b) {
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const matrix = Array(a.length + 1).fill().map(() => Array(b.length + 1).fill(0));
+    for (let i = 0; i <= a.length; i++) matrix[i][0] = i;
+    for (let j = 0; j <= b.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+        }
+    }
+    return matrix[a.length][b.length];
 }
 
 function restoreAccents(value, officialValues, usePortugueseSpelling = false) {
@@ -154,9 +174,28 @@ function isMatchingTrack(result, artist, title) {
     const sourceTitle = normalizeTitle(title);
     const resultArtist = normalizeMetadata(result.artist?.name);
     const resultTitle = normalizeTitle(result.title_short || result.title);
-    return Boolean(resultArtist && resultTitle)
-        && resultTitle === sourceTitle
-        && sourceArtist.includes(resultArtist);
+    if (!resultTitle) return false;
+    let titleMatches = resultTitle === sourceTitle
+        || resultTitle.includes(sourceTitle)
+        || sourceTitle.includes(resultTitle);
+    
+    if (!titleMatches && sourceTitle.length > 4 && resultTitle.length > 4) {
+        const distance = getLevenshteinDistance(sourceTitle, resultTitle);
+        if (distance <= 2 && Math.max(sourceTitle.length, resultTitle.length) >= 7) {
+            titleMatches = true;
+        }
+    }
+    if (!titleMatches) return false;
+
+    if (!sourceArtist) return true;
+    let artistMatches = Boolean(resultArtist) && (sourceArtist.includes(resultArtist) || resultArtist.includes(sourceArtist));
+    if (!artistMatches && sourceArtist.length > 4 && resultArtist.length > 4) {
+        const distance = getLevenshteinDistance(sourceArtist, resultArtist);
+        if (distance <= 2 && Math.max(sourceArtist.length, resultArtist.length) >= 6) {
+            artistMatches = true;
+        }
+    }
+    return Boolean(artistMatches);
 }
 
 function normalizeVersionMetadata(value) {
@@ -249,7 +288,7 @@ function trackMatchScore(result, artist, title, targetDuration = 0, albumHint = 
 
 async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = '') {
     try {
-        const query = encodeURIComponent(`${artist} ${title}`);
+        const query = encodeURIComponent([artist, title].filter(Boolean).join(' '));
         const [deezerResponse, itunesResponse] = await Promise.allSettled([
             fetchWithTimeout(`https://api.deezer.com/search?q=${query}&limit=10`, {}, 4000)
                 .then((response) => response.json()),
@@ -302,8 +341,8 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
                 : 0;
             const ambiguous = !targetDuration && durationSpread > 10;
             return {
-                title: restoreAccents(title, officialValues, true),
-                artist: restoreAccents(artist, officialValues, true),
+                title: restoreAccents(title || match.title_short || match.title, officialValues, true),
+                artist: restoreAccents(artist || match.artist?.name || '', officialValues, true),
                 album: match.album?.title || null,
                 duration: sanitizeTrackDuration(match.duration),
                 cover: match.album?.cover_xl || match.album?.cover_big || null,
@@ -321,6 +360,82 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
     };
 }
 
+async function getCachedTrackMetadata(artist, title, targetDuration = 0, albumHint = '') {
+    let cleanArtist = cleanRadioMetadata(artist);
+    const cleanTitle = cleanRadioMetadata(title);
+    if (!cleanTitle) return null;
+
+    if (STATION_IDENTIFIERS.some(id => normalizeMetadata(cleanArtist).includes(id))) {
+        cleanArtist = '';
+    }
+    const cacheKey = getTrackIdentity(cleanArtist, cleanTitle);
+    if (catalogCache.has(cacheKey)) {
+        return catalogCache.get(cacheKey);
+    }
+    const meta = await findTrackMetadata(cleanArtist, cleanTitle, targetDuration, albumHint);
+    catalogCache.set(cacheKey, meta);
+    if (catalogCache.size > 250) {
+        catalogCache.delete(catalogCache.keys().next().value);
+    }
+    return meta;
+}
+
+async function processPlayingNext(nextData) {
+    if (!nextData || !nextData.song) return null;
+    const song = nextData.song;
+    const trackFields = resolveTrackFields(song);
+    if (!trackFields.title || isStationIdentifier(trackFields.artist, trackFields.title)) {
+        return null;
+    }
+    const duration = sanitizeTrackDuration(nextData.duration);
+    const catalog = await getCachedTrackMetadata(trackFields.artist, trackFields.title, duration, song.album);
+    const coverUrl = catalog?.cover
+        || (song.art && !song.art.includes('generic_song') ? song.art : FALLBACK_GIF);
+
+    return {
+        title: capitalizeTitle(catalog?.title || trackFields.title),
+        artist: catalog?.artist || trackFields.artist,
+        album: song.album || catalog?.album || null,
+        cover: coverUrl,
+        duration: duration || catalog?.duration || 0,
+        playlist: nextData.playlist || null,
+        cuedAt: nextData.cued_at || null,
+        playedAt: Number(nextData.played_at) || null
+    };
+}
+
+async function processSongHistory(rawHistory = []) {
+    if (!Array.isArray(rawHistory)) return [];
+    const validHistory = [];
+    for (const entry of rawHistory) {
+        if (!entry?.song) continue;
+        const trackFields = resolveTrackFields(entry.song);
+        if (!trackFields.title || isStationIdentifier(trackFields.artist, trackFields.title)) {
+            continue;
+        }
+        const playedAt = Number(entry.played_at) || null;
+        const date = playedAt ? new Date(playedAt * 1000) : new Date();
+        const formattedTime = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        const artistName = trackFields.artist || "Rádio Marinha";
+        const catalog = await getCachedTrackMetadata(artistName, trackFields.title, entry.duration, entry.song.album);
+        const coverUrl = catalog?.cover
+            || (entry.song.art && !entry.song.art.includes('generic_song') ? entry.song.art : FALLBACK_GIF);
+
+        validHistory.push({
+            id: entry.sh_id || `hist-${playedAt}-${trackFields.title}`,
+            title: capitalizeTitle(catalog?.title || trackFields.title),
+            artist: catalog?.artist || artistName,
+            album: entry.song.album || catalog?.album || null,
+            cover: coverUrl,
+            duration: sanitizeTrackDuration(entry.duration) || catalog?.duration || 0,
+            playedAt,
+            formattedTime
+        });
+        if (validHistory.length >= 10) break;
+    }
+    return validHistory;
+}
+
 async function fetchRadioStatus() {
     if (radioStatusFetchInFlight) return;
     radioStatusFetchInFlight = true;
@@ -329,6 +444,35 @@ async function fetchRadioStatus() {
         const response = await fetchWithTimeout(API_URL, { cache: 'no-store' }, 4000);
         const data = await response.json();
         rememberObservedDurations(data.song_history);
+
+        // Processa histórico e próxima música
+        const [historyResult, nextResult] = await Promise.allSettled([
+            processSongHistory(data.song_history),
+            processPlayingNext(data.playing_next)
+        ]);
+        if (historyResult.status === 'fulfilled' && historyResult.value.length) {
+            const newItems = historyResult.value;
+            const merged = [...newItems];
+            for (const existing of songHistory) {
+                const exists = merged.some(m => 
+                    (m.id && existing.id && m.id === existing.id) ||
+                    (m.title.toLowerCase() === existing.title.toLowerCase() && m.artist.toLowerCase() === existing.artist.toLowerCase())
+                );
+                if (!exists) {
+                    merged.push(existing);
+                }
+            }
+            merged.sort((a, b) => (b.playedAt || 0) - (a.playedAt || 0));
+            songHistory = merged.slice(0, 10);
+        }
+        // Se a transmissão for ao vivo (streamer/estúdio), o AutoDJ fica congelado na Inovativa
+        // e o playing_next não corresponde à próxima faixa real do estúdio.
+        if (data.live?.is_live || !nextResult.value) {
+            playingNext = null;
+        } else if (nextResult.status === 'fulfilled') {
+            playingNext = nextResult.value;
+        }
+
         const playback = data.now_playing || {};
         const current = playback.song;
         const sampledAt = Date.now();
@@ -367,7 +511,7 @@ async function fetchRadioStatus() {
             const sourceDuration = playbackState.duration || observedDuration;
             const catalogTrack = stationIdentifier
                 ? null
-                : await findTrackMetadata(
+                : await getCachedTrackMetadata(
                     trackFields.artist,
                     trackFields.title,
                     sourceDuration,
@@ -407,9 +551,11 @@ async function fetchRadioStatus() {
                 || (durationReliable ? catalogTrack?.duration : 0)
                 || 0;
 
+            const safeTitle = trackFields.title === "RADIO MARINHA" ? "Rádio Marinha" : trackFields.title;
+            const safeArtist = trackFields.artist === "RADIO MARINHA" ? "Rádio Marinha" : trackFields.artist;
             nowPlaying = {
-                title: capitalizeTitle(catalogTrack?.title || trackFields.title || "Programação ao vivo"),
-                artist: catalogTrack?.artist || trackFields.artist || "Rádio Marinha",
+                title: capitalizeTitle(catalogTrack?.title || safeTitle || "Programação ao vivo"),
+                artist: catalogTrack?.artist || safeArtist || "Rádio Marinha",
                 album: current.album || catalogTrack?.album || "Rádio Marinha Online",
                 cover: coverUrl || FALLBACK_GIF,
                 streamTitle: current.text,
@@ -431,7 +577,7 @@ async function fetchRadioStatus() {
             };
         }
     } catch (e) {
-        console.error("[API ERROR]");
+        console.error("[API ERROR]", e.message);
     } finally {
         radioStatusFetchInFlight = false;
         if (refreshAgain) setTimeout(fetchRadioStatus, 0);
@@ -454,8 +600,20 @@ app.get('/api/now-playing', (req, res) => {
     res.json({
         ...nowPlaying,
         elapsed: nowPlaying.elapsed + sampleAge,
-        sampledAt
+        sampledAt,
+        nextTrack: playingNext,
+        history: songHistory
     });
+});
+
+app.get('/api/history', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json({ history: songHistory });
+});
+
+app.get('/api/next-track', (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.json({ nextTrack: playingNext });
 });
 
 app.get('/api/lyrics', async (req, res) => {
@@ -463,19 +621,20 @@ app.get('/api/lyrics', async (req, res) => {
     const title = String(req.query.title || '').trim();
     const album = String(req.query.album || '').trim();
     const requestedDuration = sanitizeTrackDuration(req.query.duration);
-    const syncAllowed = req.query.syncAllowed !== '0';
 
     if (!artist || !title) {
         return res.status(400).json({ lyrics: null });
     }
 
     try {
+        let lyricsData = null;
+
+        // 1. Tenta endpoint direto /api/get com e sem album
         const queryVariants = [];
         if (requestedDuration || album) queryVariants.push({ duration: requestedDuration, album });
         if (requestedDuration) queryVariants.push({ duration: requestedDuration, album: '' });
         queryVariants.push({ duration: 0, album: '' });
 
-        let lyricsData = null;
         for (const variant of queryVariants) {
             const params = new URLSearchParams({ artist_name: artist, track_name: title });
             if (variant.album) params.set('album_name', variant.album);
@@ -483,43 +642,79 @@ app.get('/api/lyrics', async (req, res) => {
             try {
                 const lyricsResponse = await fetchWithTimeout(`https://lrclib.net/api/get?${params}`, {
                     headers: { 'User-Agent': LRCLIB_USER_AGENT }
-                }, 6000);
+                }, 4000);
                 if (lyricsResponse.ok) {
-                    lyricsData = await lyricsResponse.json();
-                    break;
+                    const candidate = await lyricsResponse.json();
+                    if (candidate && (candidate.syncedLyrics || candidate.plainLyrics)) {
+                        lyricsData = candidate;
+                        if (candidate.syncedLyrics) break; // achou sincronizada direta
+                    }
                 }
-            } catch {
-                // Tenta a próxima assinatura e, depois, a fonte de letra comum.
-            }
+            } catch {}
+        }
+
+        // 2. Se não achou sincronizada pelo get, faz busca inteligente no LRCLIB (/api/search)
+        if (!lyricsData || !lyricsData.syncedLyrics) {
+            try {
+                const searchParams = new URLSearchParams({ track_name: title, artist_name: artist });
+                let searchRes = await fetchWithTimeout(`https://lrclib.net/api/search?${searchParams}`, {
+                    headers: { 'User-Agent': LRCLIB_USER_AGENT }
+                }, 5000);
+                if (searchRes.ok) {
+                    const list = await searchRes.json();
+                    if (Array.isArray(list) && list.length > 0) {
+                        const syncedMatch = list.find(item => item.syncedLyrics && item.trackName && item.artistName);
+                        if (syncedMatch) {
+                            lyricsData = syncedMatch;
+                        } else if (!lyricsData && list[0]) {
+                            lyricsData = list[0];
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        // 3. Segunda tentativa de busca por query livre se ainda não tiver sincronizada
+        if (!lyricsData || !lyricsData.syncedLyrics) {
+            try {
+                const searchRes = await fetchWithTimeout(`https://lrclib.net/api/search?q=${encodeURIComponent(`${artist} ${title}`)}`, {
+                    headers: { 'User-Agent': LRCLIB_USER_AGENT }
+                }, 5000);
+                if (searchRes.ok) {
+                    const list = await searchRes.json();
+                    if (Array.isArray(list) && list.length > 0) {
+                        const syncedMatch = list.find(item => item.syncedLyrics);
+                        if (syncedMatch) {
+                            lyricsData = syncedMatch;
+                        }
+                    }
+                }
+            } catch {}
         }
 
         if (lyricsData) {
-            const returnedDuration = Math.max(0, Number(lyricsData.duration) || 0);
-            const durationTolerance = Math.max(3, requestedDuration * .015);
-            const durationMatches = !requestedDuration
-                || (returnedDuration > 0
-                    && Math.abs(returnedDuration - requestedDuration) <= durationTolerance);
-            const versionMatches = !hasVersionMarker(title)
-                || Boolean(lyricsData.trackName
-                    && hasMatchingVersionProfile(title, lyricsData.trackName));
-            const trustedSyncedLyrics = syncAllowed && durationMatches && versionMatches
-                ? lyricsData.syncedLyrics
-                : null;
+            const hasLrcTimestamps = Boolean(lyricsData.syncedLyrics && /\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]/.test(lyricsData.syncedLyrics));
+            const trustedSyncedLyrics = hasLrcTimestamps ? lyricsData.syncedLyrics : null;
             const plainFromSynced = String(lyricsData.syncedLyrics || '')
                 .replace(/\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]/g, '')
                 .replace(/[ \t]+$/gm, '');
             const lyrics = trustedSyncedLyrics || lyricsData.plainLyrics || plainFromSynced;
-            if (lyrics) return res.json({
-                lyrics,
-                synced: Boolean(trustedSyncedLyrics),
-                duration: requestedDuration || (durationMatches && syncAllowed ? returnedDuration : 0)
-            });
+            const duration = Math.max(0, Number(lyricsData.duration) || requestedDuration || 0);
+
+            if (lyrics) {
+                return res.json({
+                    lyrics,
+                    synced: Boolean(trustedSyncedLyrics),
+                    duration
+                });
+            }
         }
 
+        // 4. Fallback lyrics.ovh para letras estáticas
         const fallbackResponse = await fetchWithTimeout(
             `https://api.lyrics.ovh/v1/${encodeURIComponent(artist)}/${encodeURIComponent(title)}`,
             {},
-            6000
+            5000
         );
         if (fallbackResponse.ok) {
             const data = await fallbackResponse.json();
@@ -565,6 +760,25 @@ app.get('/api/artist', async (req, res) => {
     }
 });
 
+app.get('/api/cover-proxy', async (req, res) => {
+    const rawUrl = String(req.query.url || '').trim();
+    if (!rawUrl || !rawUrl.startsWith('http')) {
+        return res.status(400).end();
+    }
+    try {
+        const upstream = await fetchWithTimeout(rawUrl, {}, 6000);
+        if (!upstream.ok) return res.status(404).end();
+        const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        const buffer = Buffer.from(await upstream.arrayBuffer());
+        res.send(buffer);
+    } catch {
+        res.status(502).end();
+    }
+});
+
 async function startServer() {
     if (IS_PRODUCTION) {
         app.use(express.static(DIST_DIR));
@@ -581,6 +795,21 @@ async function startServer() {
             appType: "spa"
         });
         app.use(vite.middlewares);
+
+        app.use('*', async (req, res, next) => {
+            if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/imagens')) {
+                return next();
+            }
+            try {
+                const url = req.originalUrl;
+                let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+                template = await vite.transformIndexHtml(url, template);
+                res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+            } catch (e) {
+                vite.ssrFixStacktrace(e);
+                next(e);
+            }
+        });
     }
 
     app.listen(PORT, () => {

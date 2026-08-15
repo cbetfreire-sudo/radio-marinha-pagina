@@ -1,0 +1,61 @@
+{
+  "atualizadoEm": "2026-08-14",
+  "fusoHorario": "America/Sao_Paulo",
+  "dias": {
+    "segunda": [
+      { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+    ],
+    "terca": [
+      { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+    ],
+    "quarta": [
+      { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+    ],
+    "quinta": [
+      { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+    ],
+    "sexta": [
+      { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+    ],
+    "sabado": [
+      { "inicio": "00:00", "fim": "04:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "04:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "17:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "17:00", "fim": "18:00", "programa": "MPB à Bordo", "descricao": "Músicas brasileiras a bordo" },
+      { "inicio": "18:00", "fim": "24:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" }
+    ],
+    "domingo": [
+      { "inicio": "00:00", "fim": "04:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
+      { "inicio": "04:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
+      { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
+      { "inicio": "08:00", "fim": "18:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "18:00", "fim": "24:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" }
+    ]
+  }
+}

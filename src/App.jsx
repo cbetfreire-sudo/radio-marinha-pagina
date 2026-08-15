@@ -5,6 +5,7 @@ const STREAM_URL = "https://stm0.inovativa.net/listen/radiomarinha/radio.mp3";
 const FALLBACK_COVER = "/imagens/radio_gif.gif";
 const TIMER_OPTIONS = [15, 30, 45, 60, 90];
 const DAYS = ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"];
+const DAY_KEYS = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"];
 const WEEKDAY_PROGRAMS = [
   ["00:00 – 02:00", "ONBOARD", "Jazz e Blues"],
   ["02:00 – 06:00", "Brisa Marinha", "MPB"],
@@ -17,6 +18,7 @@ const WEEKEND_PROGRAMS = {
   5: [["00:00 – 04:00", "ONBOARD", "Jazz e Blues"], ["04:00 – 06:00", "Brisa Marinha", "MPB"], ["06:00 – 08:00", "Alvorada", "Nacionais e internacionais"], ["08:00 – 17:00", "Portos e Costas", "MPB"], ["17:00 – 18:00", "MPB à Bordo", "Músicas brasileiras a bordo"], ["18:00 – 24:00", "Bons Ventos", "Baladas dos anos 80 e 90"]],
   6: [["00:00 – 04:00", "ONBOARD", "Jazz e Blues"], ["04:00 – 06:00", "Brisa Marinha", "MPB"], ["06:00 – 08:00", "Alvorada", "Nacionais e internacionais"], ["08:00 – 18:00", "Portos e Costas", "MPB"], ["18:00 – 24:00", "Bons Ventos", "Baladas dos anos 80 e 90"]]
 };
+const DEFAULT_SCHEDULE = DAY_KEYS.map((_, dayIndex) => WEEKEND_PROGRAMS[dayIndex] || WEEKDAY_PROGRAMS);
 
 const initialTrack = {
   title: "Rádio Marinha",
@@ -46,7 +48,11 @@ const ActionIcon = ({ name }) => {
     share: <><circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" /><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5" /></>,
     timer: <><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.8 1.8M9 2h6" /></>,
     radio: <><rect x="3" y="7" width="18" height="13" rx="3" /><path d="m7 7 10-4M8 12h5M8 16h3" /><circle cx="17" cy="14" r="2.2" /></>,
-    mail: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" /></>
+    mail: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" /></>,
+    history: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></>,
+    next: <><polygon points="5 4 15 12 5 20 5 4" fill="currentColor" /><line x1="19" y1="5" x2="19" y2="19" strokeWidth="2.2" /></>,
+    copy: <><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
+    check: <polyline points="20 6 9 17 4 12" />
   };
   return <svg className="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 };
@@ -691,30 +697,30 @@ function SloganOceanWave({ active }) {
       const anchorTravel = smoothstep(anchorProgress);
       const anchorOpacity = .8 + (1 - anchorTravel) * .2;
       if (anchorOpacity > .01) {
-        const detailScale = Math.max(.82, Math.min(1.18, width / 190));
+        const detailScale = Math.max(.85, Math.min(1.22, width / 190));
         const bowX = -renderedWidth * .39;
         const hawseY = -renderedHeight * .16;
-        const deployedChainLength = Math.max(28, Math.min(45, height * .48));
+        const deployedChainLength = Math.max(34, Math.min(50, height * .42));
         const chainLength = (deployedChainLength * (1 - anchorTravel) + 1.5 * anchorTravel) * detailScale;
-        const anchorSize = (8 * (1 - anchorTravel) + 2.35 * anchorTravel) * detailScale;
+        const anchorSize = (9.2 * (1 - anchorTravel) + 2.5 * anchorTravel) * detailScale;
         const deployedAmount = 1 - anchorTravel;
         const pendulumOffset = (
           Math.sin(pendulumTime * .78)
           + Math.sin(pendulumTime * 1.31 + .9) * .28
-        ) * 1.7 * detailScale * (.04 + deployedAmount * .96);
+        ) * 1.9 * detailScale * (.04 + deployedAmount * .96);
         const stowedOffsetX = anchorTravel * 2.2 * detailScale;
         const chainEndX = bowX - .4 * scale + pendulumOffset + stowedOffsetX;
-        const pendulumAngle = pendulumOffset / Math.max(18, chainLength) * .72;
+        const pendulumAngle = pendulumOffset / Math.max(20, chainLength) * .72;
         context.save();
         context.globalAlpha = anchorOpacity;
         context.lineCap = "round";
         context.lineJoin = "round";
         context.shadowColor = "rgba(0, 7, 13, .62)";
-        context.shadowBlur = 1.8 * scale;
+        context.shadowBlur = 2 * scale;
 
         // Corrente de aço, com uma base escura para continuar legível sobre a água.
         context.globalAlpha = anchorOpacity * (.06 + deployedAmount * .94);
-        context.setLineDash([1.25 * scale, 1.15 * scale]);
+        context.setLineDash([1.35 * scale, 1.2 * scale]);
         context.beginPath();
         context.moveTo(bowX, hawseY);
         context.quadraticCurveTo(
@@ -723,11 +729,11 @@ function SloganOceanWave({ active }) {
           chainEndX,
           hawseY + chainLength
         );
-        context.strokeStyle = "#46535c";
-        context.lineWidth = Math.max(1.35, 1.32 * scale);
+        context.strokeStyle = "#38454e";
+        context.lineWidth = Math.max(1.5, 1.45 * scale);
         context.stroke();
-        context.strokeStyle = "#dce4e9";
-        context.lineWidth = Math.max(.68, .62 * scale);
+        context.strokeStyle = "#e8eff4";
+        context.lineWidth = Math.max(.8, .75 * scale);
         context.stroke();
         context.setLineDash([]);
 
@@ -933,9 +939,9 @@ function formatClock(seconds) {
   return `${minutes}:${rest}`;
 }
 
-function getCurrentProgram(date = new Date()) {
+function getCurrentProgram(schedule, date = new Date()) {
   const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
-  const programs = WEEKEND_PROGRAMS[dayIndex] || WEEKDAY_PROGRAMS;
+  const programs = schedule[dayIndex] || [];
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
   const toMinutes = (value) => {
     const [hours, minutes] = value.split(":").map(Number);
@@ -949,6 +955,192 @@ function getCurrentProgram(date = new Date()) {
   });
 
   return scheduledProgram?.[1] || "Programação ao vivo";
+}
+
+function getUpcomingProgramsList(schedule, date = new Date(), limit = 6) {
+  const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
+  const programs = schedule[dayIndex] || [];
+  const currentMinutes = date.getHours() * 60 + date.getMinutes();
+  const toMinutes = (value) => {
+    const [hours, minutes] = value.split(":").map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const currentIndex = programs.findIndex(([time]) => {
+    const [startText, endText] = time.split(/\s*[–-]\s*/);
+    if (!endText) return false;
+    return currentMinutes >= toMinutes(startText) && currentMinutes < toMinutes(endText);
+  });
+
+  const upcoming = [];
+  const startIndex = currentIndex !== -1 ? currentIndex + 1 : 0;
+
+  for (let i = startIndex; i < programs.length; i += 1) {
+    const [time, title, description] = programs[i];
+    const [startTime] = time.split(/\s*[–-]\s*/);
+    upcoming.push({ title, description, time: startTime, fullTime: time, isTomorrow: false });
+    if (upcoming.length >= limit) return upcoming;
+  }
+
+  const nextDayIndex = (dayIndex + 1) % 7;
+  const nextDayPrograms = schedule[nextDayIndex] || [];
+  for (let i = 0; i < nextDayPrograms.length; i += 1) {
+    const [time, title, description] = nextDayPrograms[i];
+    const [startTime] = time.split(/\s*[–-]\s*/);
+    upcoming.push({ title, description, time: startTime, fullTime: time, isTomorrow: true });
+    if (upcoming.length >= limit) break;
+  }
+
+  return upcoming;
+}
+
+function UpcomingProgramsTicker({ programs = [], onOpenSchedule }) {
+  const [index, setIndex] = useState(0);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (programs.length <= 1 || isHovered) return;
+    const timer = setInterval(() => {
+      setIndex((prev) => (prev + 1) % programs.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [programs.length, isHovered]);
+
+  useEffect(() => {
+    setIndex(0);
+  }, [programs]);
+
+  if (!programs.length) return null;
+
+  const currentProgram = programs[index] || programs[0];
+
+  return (
+    <div
+      className="program-roulette-container"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onClick={onOpenSchedule}
+      title="Clique para ver a grade completa"
+      role="button"
+      tabIndex={0}
+    >
+      <div className="program-roulette-track-mask">
+        <div 
+          className="program-roulette-track"
+          style={{ transform: `translateY(-${index * 30}px)` }}
+        >
+          {programs.map((prog, i) => (
+            <div className="program-roulette-stage" key={i}>
+              <span className="roulette-time-badge">
+                {prog.isTomorrow ? `Amanhã ${prog.time}` : `Às ${prog.time}`}
+              </span>
+              <span className="roulette-program-name">{prog.title}</span>
+              <span className="roulette-divider">•</span>
+              <span className="roulette-genre-desc">{prog.description}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {programs.length > 1 && (
+        <div className="roulette-indicators" aria-hidden="true">
+          {programs.map((_, i) => (
+            <span
+              key={i}
+              className={`roulette-step-dot ${i === index ? "active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIndex(i);
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function extractPaletteFromImage(imgUrl, callback) {
+  if (!imgUrl || imgUrl === FALLBACK_COVER) {
+    callback(null);
+    return;
+  }
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.src = imgUrl.startsWith("http") ? `/api/cover-proxy?url=${encodeURIComponent(imgUrl)}` : imgUrl;
+  img.onload = () => {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 40;
+      canvas.height = 40;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return callback(null);
+      ctx.drawImage(img, 0, 0, 40, 40);
+      const { data } = ctx.getImageData(0, 0, 40, 40);
+
+      const colorBins = new Map();
+      let totalR = 0, totalG = 0, totalB = 0, validPixels = 0;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const a = data[i + 3];
+        if (a < 120) continue;
+
+        const max = Math.max(r, g, b);
+        const min = Math.min(r, g, b);
+        const sat = max === 0 ? 0 : (max - min) / max;
+        const bri = (r * 299 + g * 587 + b * 114) / 1000;
+
+        totalR += r;
+        totalG += g;
+        totalB += b;
+        validPixels++;
+
+        if (bri > 20 && bri < 240) {
+          const qR = Math.round(r / 24) * 24;
+          const qG = Math.round(g / 24) * 24;
+          const qB = Math.round(b / 24) * 24;
+          const key = `${qR},${qG},${qB}`;
+          
+          if (!colorBins.has(key)) {
+            colorBins.set(key, { r: qR, g: qG, b: qB, count: 0, sat, bri });
+          }
+          colorBins.get(key).count++;
+        }
+      }
+
+      if (colorBins.size === 0 && !validPixels) return callback(null);
+
+      if (colorBins.size === 0) {
+        const avgR = Math.round(totalR / validPixels);
+        const avgG = Math.round(totalG / validPixels);
+        const avgB = Math.round(totalB / validPixels);
+        return callback({
+          primary: `${avgR}, ${avgG}, ${avgB}`,
+          secondary: `${Math.round(avgR * 0.7)}, ${Math.round(avgG * 0.7)}, ${Math.round(avgB * 0.7)}`
+        });
+      }
+
+      const sortedBins = Array.from(colorBins.values()).sort((a, b) => {
+        const scoreA = a.count * (a.sat > 0.15 ? 1 : 0.4);
+        const scoreB = b.count * (b.sat > 0.15 ? 1 : 0.4);
+        return scoreB - scoreA;
+      });
+
+      const primary = sortedBins[0];
+      const secondary = sortedBins.find(c => Math.abs(c.r - primary.r) + Math.abs(c.g - primary.g) + Math.abs(c.b - primary.b) > 70) || sortedBins[Math.floor(sortedBins.length * 0.5)] || primary;
+
+      callback({
+        primary: `${primary.r}, ${primary.g}, ${primary.b}`,
+        secondary: `${secondary.r}, ${secondary.g}, ${secondary.b}`
+      });
+    } catch {
+      callback(null);
+    }
+  };
+  img.onerror = () => callback(null);
 }
 
 export default function App() {
@@ -966,6 +1158,10 @@ export default function App() {
   const streamTransportOverheadRef = useRef(0);
   const streamLatencyMeasuredAtRef = useRef(0);
   const [track, setTrack] = useState(initialTrack);
+  const [nextTrack, setNextTrack] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [copiedKey, setCopiedKey] = useState(null);
+  const [coverPalette, setCoverPalette] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [streamLatency, setStreamLatency] = useState(0);
@@ -983,7 +1179,9 @@ export default function App() {
   const [artistLoading, setArtistLoading] = useState(true);
   const [modal, setModal] = useState(null);
   const [scheduleDay, setScheduleDay] = useState(() => Math.min(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1, 6));
-  const [currentProgram, setCurrentProgram] = useState(() => getCurrentProgram());
+  const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE);
+  const [currentProgram, setCurrentProgram] = useState(() => getCurrentProgram(DEFAULT_SCHEDULE));
+  const upcomingPrograms = useMemo(() => getUpcomingProgramsList(schedule), [schedule, currentProgram]);
 
   displayedTrackRef.current = track;
   playingRef.current = playing;
@@ -991,16 +1189,51 @@ export default function App() {
   const playbackKey = `${favoriteKey}—${track.playbackId || track.playedAt || track.updatedAt || "atual"}`;
   const favorite = favorites.some((item) => item.key === favoriteKey);
 
-  function displayTrack(nextTrack) {
+  useEffect(() => {
+    if (!track?.cover || track.cover === FALLBACK_COVER) {
+      setCoverPalette(null);
+      return;
+    }
+    let isCurrent = true;
+    extractPaletteFromImage(track.cover, (palette) => {
+      if (isCurrent) setCoverPalette(palette);
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [track?.cover]);
+
+  function displayTrack(nextTrackItem) {
     clearTimeout(pendingTrackTimerRef.current);
     pendingTrackTimerRef.current = 0;
     pendingTrackRef.current = null;
-    displayedTrackRef.current = nextTrack;
-    setTrack(nextTrack);
+    displayedTrackRef.current = nextTrackItem;
+    setTrack(nextTrackItem);
   }
 
   function flushPendingTrack() {
     if (pendingTrackRef.current) displayTrack(pendingTrackRef.current);
+  }
+
+  function toggleFavoriteItem(item) {
+    const key = `${item.artist}—${item.title}`;
+    const isFav = favorites.some((f) => f.key === key);
+    const next = isFav
+      ? favorites.filter((f) => f.key !== key)
+      : [{ key, title: item.title, artist: item.artist, cover: item.cover || FALLBACK_COVER }, ...favorites].slice(0, 30);
+    setFavorites(next);
+    localStorage.setItem("radio-favorites", JSON.stringify(next));
+  }
+
+  async function copyTrackInfo(title, artist, key) {
+    const text = `${artist} - ${title}`;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch {}
   }
 
   useEffect(() => {
@@ -1029,6 +1262,16 @@ export default function App() {
           playbackSampledAt: receivedAt,
           updatedAt: data.updatedAt || null
         };
+
+        if (Array.isArray(data.history)) {
+          setHistory(data.history);
+        }
+        if (data.nextTrack) {
+          setNextTrack(data.nextTrack);
+        } else {
+          setNextTrack(null);
+        }
+
         const displayedTrack = displayedTrackRef.current;
         const incomingIdentity = incomingTrack.playbackId || incomingTrack.playedAt;
         const displayedIdentity = displayedTrack.playbackId || displayedTrack.playedAt;
@@ -1064,11 +1307,38 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const updateCurrentProgram = () => setCurrentProgram(getCurrentProgram());
+    let active = true;
+    const loadSchedule = async () => {
+      try {
+        const response = await fetch(`/programacao.json?data=${Date.now()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const nextSchedule = DAY_KEYS.map((day) => {
+          if (!Array.isArray(data?.dias?.[day])) throw new Error(`Dia inválido: ${day}`);
+          return data.dias[day].map((item) => {
+            if (!item?.inicio || !item?.fim || !item?.programa) throw new Error(`Programa inválido em ${day}`);
+            return [`${item.inicio} – ${item.fim}`, item.programa, item.descricao || ""];
+          });
+        });
+        if (active) setSchedule(nextSchedule);
+      } catch (error) {
+        console.error("Não foi possível carregar programacao.json; usando a grade padrão.", error);
+      }
+    };
+    loadSchedule();
+    const interval = setInterval(loadSchedule, 5 * 60 * 1000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateCurrentProgram = () => setCurrentProgram(getCurrentProgram(schedule));
     updateCurrentProgram();
     const interval = setInterval(updateCurrentProgram, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [schedule]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
@@ -1328,8 +1598,13 @@ export default function App() {
     setTimerOpen(false);
   }
 
+  const dynamicCoverStyle = coverPalette ? {
+    "--cover-rgb-1": coverPalette.primary,
+    "--cover-rgb-2": coverPalette.secondary,
+  } : undefined;
+
   return (
-    <main className={`app ${playing ? "is-playing" : ""} ${loading ? "is-loading" : ""}`}>
+    <main className={`app ${playing ? "is-playing" : ""} ${loading ? "is-loading" : ""}`} style={dynamicCoverStyle}>
       <div className="ambient" aria-hidden="true" />
       <section className="shell" aria-label="Player da Rádio Marinha">
         <header className="topbar">
@@ -1379,6 +1654,33 @@ export default function App() {
               <output>{Math.round(volume * 100)}%</output>
             </div>
 
+            {(nextTrack || upcomingPrograms.length > 0) && (
+              <div className="up-next-card" role="region" aria-label="A seguir na programação">
+                <div className="up-next-badge">
+                  <ActionIcon name="next" />
+                  <span>A SEGUIR</span>
+                </div>
+                {nextTrack ? (
+                  <div className="up-next-content">
+                    <img
+                      className="up-next-cover"
+                      src={nextTrack.cover || FALLBACK_COVER}
+                      alt={`Capa de ${nextTrack.title}`}
+                      onError={useFallbackCover}
+                    />
+                    <div className="up-next-info">
+                      <strong>{nextTrack.title}</strong>
+                      <small>{nextTrack.artist}</small>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="up-next-content roulette-mode">
+                    <UpcomingProgramsTicker programs={upcomingPrograms} onOpenSchedule={() => setModal("schedule")} />
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="quick-actions">
               <button className={favorite ? "active" : ""} onClick={toggleFavorite} aria-pressed={favorite}><span className="action-icon-wrap"><ActionIcon name="heart" /></span><span>Favoritar</span></button>
               <button onClick={shareTrack}><span className="action-icon-wrap"><ActionIcon name="share" /></span><span>Compartilhar</span></button>
@@ -1400,13 +1702,80 @@ export default function App() {
             <nav className="tabs" aria-label="Conteúdo da rádio">
               <button className={panel === "lyrics" ? "active" : ""} onClick={() => setPanel("lyrics")}>Letra</button>
               <button className={panel === "artist" ? "active" : ""} onClick={() => setPanel("artist")}>Artista</button>
+              <button className={panel === "recent" ? "active" : ""} onClick={() => setPanel("recent")}>Recentes</button>
               <button className={panel === "favorites" ? "active" : ""} onClick={() => setPanel("favorites")}>Favoritos</button>
             </nav>
 
-            <div className="tab-content">
+            <div className="tab-content" style={dynamicCoverStyle}>
               {panel === "radio" && <div className="welcome-content"><p className="section-kicker">CONTEÚDO DA FAIXA</p><h2>Conheça o que está tocando</h2><p>Abra a letra da música ou conheça a trajetória do artista enquanto acompanha a transmissão.</p><div className="content-shortcuts"><button onClick={() => setPanel("lyrics")}>Ver letra <span>→</span></button><button onClick={() => setPanel("artist")}>Sobre o artista <span>→</span></button></div></div>}
               {panel === "lyrics" && <div className="lyrics-content"><div className="content-heading"><div><p className="section-kicker">LETRA</p><h2>{track.title}</h2></div><span>{track.artist}</span></div>{lyricsLoading ? <div className="content-loading"><span className="spinner" /> Buscando letra…</div> : lyrics ? <AutoScrollingLyrics active={playing && !loading} audioRef={audioRef} duration={lyricsDuration || (track.durationReliable ? track.duration : 0)} elapsed={track.elapsed} latency={streamLatency} lyrics={lyrics} playbackSampledAt={track.playbackSampledAt} trackKey={playbackKey} title={track.title} /> : <div className="empty-state"><strong>Letra não disponível</strong><p>Não encontramos uma letra confiável para esta faixa.</p></div>}</div>}
               {panel === "artist" && <div className="artist-content">{artistLoading ? <div className="content-loading"><span className="spinner" /> Buscando artista…</div> : artistInfo?.biography ? <><div className="artist-heading">{artistInfo.image && <img src={artistInfo.image} alt={artistInfo.name} />}<div><p className="section-kicker">SOBRE O ARTISTA</p><h2>{artistInfo.name || track.artist}</h2><span>{[artistInfo.genre, artistInfo.country].filter(Boolean).join(" • ")}</span></div></div><p className="biography">{artistInfo.biography}</p></> : <div className="empty-state"><strong>História não disponível</strong><p>A biografia de {track.artist} ainda não foi encontrada em nossa fonte.</p></div>}</div>}
+              {panel === "recent" && <div className="recent-content">
+                <div className="content-heading">
+                  <div>
+                    <p className="section-kicker">HISTÓRICO NO AR</p>
+                    <h2>Tocadas Recentemente</h2>
+                  </div>
+                  <span>Últimas faixas</span>
+                </div>
+
+                {history.length ? (
+                  <div className="recent-timeline" role="feed" aria-label="Músicas tocadas recentemente">
+                    {history.map((item, idx) => {
+                      const itemKey = `${item.artist}—${item.title}`;
+                      const isItemFav = favorites.some((f) => f.key === itemKey);
+                      const isCopied = copiedKey === item.id;
+                      return (
+                        <article className="timeline-item" key={item.id || idx}>
+                          <div className="timeline-spine" aria-hidden="true">
+                            <span className="timeline-node" />
+                            {idx < history.length - 1 && <span className="timeline-line" />}
+                          </div>
+                          <div className="timeline-card">
+                            <img
+                              className="timeline-cover"
+                              src={item.cover || FALLBACK_COVER}
+                              alt={`Capa de ${item.title}`}
+                              onError={useFallbackCover}
+                            />
+                            <div className="timeline-meta">
+                              <span className="timeline-time-badge">
+                                <ActionIcon name="history" />
+                                <time>{item.formattedTime || "Há pouco"}</time>
+                              </span>
+                              <strong className="timeline-title" title={item.title}>{item.title}</strong>
+                              <small className="timeline-artist" title={item.artist}>{item.artist}</small>
+                            </div>
+                            <div className="timeline-actions">
+                              <button
+                                className={`timeline-action-btn ${isItemFav ? "active" : ""}`}
+                                aria-label={isItemFav ? `Remover ${item.title} dos favoritos` : `Favoritar ${item.title}`}
+                                title={isItemFav ? "Remover dos favoritos" : "Favoritar música"}
+                                onClick={() => toggleFavoriteItem(item)}
+                              >
+                                <ActionIcon name="heart" />
+                              </button>
+                              <button
+                                className={`timeline-action-btn ${isCopied ? "copied" : ""}`}
+                                aria-label={`Copiar informações de ${item.title}`}
+                                title={isCopied ? "Copiado!" : "Copiar artista e título"}
+                                onClick={() => copyTrackInfo(item.title, item.artist, item.id)}
+                              >
+                                <ActionIcon name={isCopied ? "check" : "copy"} />
+                              </button>
+                            </div>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Histórico em sincronização</strong>
+                    <p>As faixas anteriores da transmissão aparecerão aqui conforme forem executadas.</p>
+                  </div>
+                )}
+              </div>}
               {panel === "favorites" && <div><h2>Suas músicas favoritas</h2>{favorites.length ? <ul>{favorites.map((item) => <li key={item.key}><img src={item.cover || FALLBACK_COVER} alt="" onError={useFallbackCover} /><span><strong>{item.title}</strong><small>{item.artist}</small></span><button aria-label={`Remover ${item.title}`} onClick={() => { const next = favorites.filter((favoriteItem) => favoriteItem.key !== item.key); setFavorites(next); localStorage.setItem("radio-favorites", JSON.stringify(next)); }}>×</button></li>)}</ul> : <p>As músicas que você favoritar aparecerão aqui.</p>}</div>}
             </div>
           </section>
@@ -1424,7 +1793,7 @@ export default function App() {
 
           {modal === "schedule" ? <>
             <nav className="day-tabs" aria-label="Dias da programação">{DAYS.map((day, index) => <button key={day} className={scheduleDay === index ? "active" : ""} onClick={() => setScheduleDay(index)}>{day}</button>)}</nav>
-            <div className="schedule-list">{(WEEKEND_PROGRAMS[scheduleDay] || WEEKDAY_PROGRAMS).map(([time, title, description]) => <article className="schedule-item" key={`${time}-${title}`}><time>{time}</time><div><h3>{title}</h3><p>{description}</p></div></article>)}</div>
+            <div className="schedule-list">{schedule[scheduleDay].map(([time, title, description]) => <article className="schedule-item" key={`${time}-${title}`}><time>{time}</time><div><h3>{title}</h3><p>{description}</p></div></article>)}</div>
           </> : <div className="contact-content">
             <p>Envie pedidos de música e sugestões para a Rádio Marinha pelo e-mail ou WhatsApp.</p>
             <a className="contact-link" href="mailto:radiomarinha@marinha.mil.br"><span className="contact-symbol">@</span><span><small>E-MAIL</small><strong>radiomarinha@marinha.mil.br</strong></span><b>→</b></a>
