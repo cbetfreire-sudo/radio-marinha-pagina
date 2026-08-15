@@ -52,6 +52,7 @@ let nowPlaying = {
 let playingNext = null;
 let songHistory = [];
 const catalogCache = new Map();
+const artistCache = new Map();
 let radioStatusFetchInFlight = false;
 const observedTrackDurations = new Map();
 
@@ -88,41 +89,76 @@ function capitalizeTitle(value) {
 }
 
 function cleanRadioMetadata(value) {
-    return String(value || '')
+    if (!value) return '';
+    let text = String(value || '')
+        .replace(/\uFFFD/g, '')
+        .replace(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, '')
+        // Remove extensões de arquivo comuns (.mp3, .wav, .aac, .m4a, .flac, .ogg, .wma, .opus)
+        .replace(/\.(?:mp3|wav|aac|m4a|flac|ogg|wma|aiff|opus|alac)$/i, '')
+        // Converte underscores usados como espaços em arquivos (ex: John_Legend-Preach)
+        .replace(/_/g, ' ')
+        // Remove números de faixa/prefixos no início (ex: "01 - ", "01. ", "01 ")
+        .replace(/^\s*\d{1,3}\s*[-–.]\s*/, '')
+        // Remove tags comuns de internet/youtube/downloads
+        .replace(/\s*\[(?:official\s*(?:video|audio|music\s*video)|clipe\s*oficial|áudio\s*oficial|audio|hq|hd|320\s*kbps|\d+kbps|lyrics|letra|ao\s*vivo|live)\]/gi, '')
+        .replace(/\s*\((?:official\s*(?:video|audio|music\s*video)|clipe\s*oficial|áudio\s*oficial|audio|hq|hd|320\s*kbps|\d+kbps|lyrics|letra|www\.[^\s)]+|site:[^\s)]+)\)/gi, '')
+        // Remove URLs
+        .replace(/https?:\/\/\S+/gi, '')
+        .replace(/www\.\S+/gi, '')
+        // Normaliza espaços e travessões nas pontas
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/^[–—-]\s*/u, '')
+        .replace(/\s*[–—-]$/u, '')
         .trim();
+
+    return text;
 }
 
 function splitArtistAndTitle(value) {
     const cleaned = cleanRadioMetadata(value);
-    const match = cleaned.match(/^(.+?)(?:\s+-\s*|\s*-\s+|\s*[–—]\s*)(.+)$/u);
+    if (!cleaned) return null;
+
+    // Tenta divisão padrão: com espaços ao redor do hífen/travessão ou com hífen direto entre palavras (ex: John Legend-Preach)
+    const match = cleaned.match(/^(.+?)(?:\s+-\s*|\s*-\s+|\s*[–—|/]\s*|-(?=[A-Za-zÀ-ÿ0-9]))(.+)$/u);
     if (!match) return null;
 
-    const artist = cleanRadioMetadata(match[1]);
-    const title = cleanRadioMetadata(match[2]);
+    let artist = cleanRadioMetadata(match[1]);
+    let title = cleanRadioMetadata(match[2]);
+
+    // Remove sufixos de rádio anexados (ex: "Toquinho - Aquarela - Rádio Marinha")
+    artist = artist.replace(/\s*[-–]\s*Rádio\s+Marinha.*$/i, '').trim();
+    title = title.replace(/\s*[-–]\s*Rádio\s+Marinha.*$/i, '').trim();
+
     if (normalizeMetadata(artist).length < 2 || normalizeMetadata(title).length < 2) return null;
     return { artist, title };
 }
 
 function resolveTrackFields(current) {
     const receivedArtist = cleanRadioMetadata(current?.artist);
-    const artist = MISSING_ARTIST_IDENTIFIERS.has(normalizeMetadata(receivedArtist)) ? '' : receivedArtist;
     const title = cleanRadioMetadata(current?.title);
+    const text = cleanRadioMetadata(current?.text);
 
-    if (artist) {
-        const titlePair = splitArtistAndTitle(title);
-        if (titlePair && normalizeMetadata(titlePair.artist) === normalizeMetadata(artist)) {
-            return { artist, title: titlePair.title };
+    const titlePair = splitArtistAndTitle(title);
+    const textPair = splitArtistAndTitle(text);
+
+    const isMissingArtist = !receivedArtist || MISSING_ARTIST_IDENTIFIERS.has(normalizeMetadata(receivedArtist));
+
+    if (!isMissingArtist) {
+        if (titlePair && normalizeMetadata(titlePair.artist) === normalizeMetadata(receivedArtist)) {
+            return { artist: receivedArtist, title: titlePair.title };
         }
-        return { artist, title };
+        return { artist: receivedArtist, title };
     }
 
-    const combinedMetadata = [title, current?.text]
-        .map(splitArtistAndTitle)
-        .find(Boolean);
-    return combinedMetadata || { artist: '', title };
+    if (titlePair) {
+        return titlePair;
+    }
+    if (textPair) {
+        return textPair;
+    }
+
+    return { artist: '', title };
 }
 
 function isStationIdentifier(artist, title) {
@@ -732,28 +768,310 @@ app.get('/api/lyrics', async (req, res) => {
     }
 });
 
+const WIKI_USER_AGENT = 'RadioMarinhaOnline/2.0 (https://radiomarinha.marinha.mil.br; contato@radiomarinha.mil.br)';
+
+function toTitleCase(str) {
+    return String(str || '').toLowerCase().replace(/(?:^|\s|-|\()\S/g, c => c.toUpperCase());
+}
+
+function getArtistSearchVariants(rawName) {
+    const cleaned = cleanRadioMetadata(rawName)
+        .replace(/[\uFFFD]/g, '')
+        .trim();
+    if (!cleaned) return [];
+
+    const variants = new Set();
+    const titleCased = toTitleCase(cleaned);
+
+    variants.add(titleCased);
+    variants.add(cleaned);
+
+    // Variações específicas para artigos enciclopédicos de bandas/músicos na Wikipédia
+    variants.add(`${titleCased} (banda)`);
+    variants.add(`${titleCased} (grupo musical)`);
+    variants.add(`${titleCased} (cantor)`);
+    variants.add(`${titleCased} (cantora)`);
+    variants.add(`${titleCased} (músico)`);
+    variants.add(`${titleCased} (dupla)`);
+
+    // Remove feat / ft / participacao / &
+    const primaryOnly = cleaned
+        .replace(/\s+(?:feat\.?|ft\.?|featuring|part\.?|participação)\s+.+$/i, '')
+        .trim();
+    if (primaryOnly && primaryOnly !== cleaned) {
+        const pTitle = toTitleCase(primaryOnly);
+        variants.add(pTitle);
+        variants.add(`${pTitle} (banda)`);
+        variants.add(`${pTitle} (cantor)`);
+        variants.add(primaryOnly);
+    }
+
+    // Primeira parte se for dupla/banda com " e ", "&", "/", ","
+    const firstOfDuo = primaryOnly.split(/\s+(?:e|&|\/|,)\s+/i)[0]?.trim();
+    if (firstOfDuo && firstOfDuo.length >= 3 && firstOfDuo !== primaryOnly) {
+        const fTitle = toTitleCase(firstOfDuo);
+        variants.add(fTitle);
+        variants.add(`${fTitle} (banda)`);
+        variants.add(firstOfDuo);
+    }
+
+    return Array.from(variants);
+}
+
+async function fetchDeezerArtistImage(artistName) {
+    try {
+        const res = await fetchWithTimeout(
+            `https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=1`,
+            {},
+            3000
+        );
+        if (res.ok) {
+            const data = await res.json();
+            const artist = data.data?.[0];
+            return artist?.picture_big || artist?.picture_medium || null;
+        }
+    } catch {}
+    return null;
+}
+
+async function fetchWikipediaArtist(artistName) {
+    const variants = getArtistSearchVariants(artistName);
+    if (!variants.length) return null;
+
+    for (const query of variants) {
+        if (isStationIdentifier(query, '')) continue;
+
+        // 1. Tenta resumo direto por título na Wikipédia PT
+        try {
+            const cleanTitle = query.replace(/\s+/g, '_');
+            const summaryUrl = `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(cleanTitle)}`;
+            const sumRes = await fetchWithTimeout(summaryUrl, {
+                headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
+            }, 3500);
+
+            if (sumRes.ok) {
+                const sumData = await sumRes.json();
+                if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
+                    return {
+                        name: sumData.title || query,
+                        biography: sumData.extract,
+                        image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
+                        description: sumData.description || null,
+                        source: 'Wikipédia'
+                    };
+                }
+            }
+        } catch {}
+
+        // 2. Tenta Busca Semântica Completa (action=query&list=search) na Wikipédia em Português
+        try {
+            const ptSearchUrl = `https://pt.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=5&format=json`;
+            const ptSearchRes = await fetchWithTimeout(ptSearchUrl, {
+                headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
+            }, 3500);
+
+            if (ptSearchRes.ok) {
+                const ptSearchData = await ptSearchRes.json();
+                const searchResults = ptSearchData.query?.search || [];
+                for (const item of searchResults.slice(0, 3)) {
+                    const pageSummaryUrl = `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title.replace(/\s+/g, '_'))}`;
+                    const sumRes = await fetchWithTimeout(pageSummaryUrl, {
+                        headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
+                    }, 3500);
+
+                    if (sumRes.ok) {
+                        const sumData = await sumRes.json();
+                        if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
+                            return {
+                                name: sumData.title || query,
+                                biography: sumData.extract,
+                                image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
+                                description: sumData.description || null,
+                                source: 'Wikipédia'
+                            };
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[WIKI PT SEARCH ERROR]:', e.message);
+        }
+
+        // 3. Tenta OpenSearch na Wikipédia em Inglês como fallback
+        try {
+            const enSearchUrl = `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=5&namespace=0&format=json`;
+            const enSearchRes = await fetchWithTimeout(enSearchUrl, {
+                headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
+            }, 3500);
+
+            if (enSearchRes.ok) {
+                const enSearchData = await enSearchRes.json();
+                const titles = enSearchData[1] || [];
+                for (const title of titles.slice(0, 3)) {
+                    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
+                    const sumRes = await fetchWithTimeout(summaryUrl, {
+                        headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
+                    }, 3500);
+
+                    if (sumRes.ok) {
+                        const sumData = await sumRes.json();
+                        if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
+                            return {
+                                name: sumData.title || query,
+                                biography: sumData.extract,
+                                image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
+                                description: sumData.description || null,
+                                source: 'Wikipédia (EN)'
+                            };
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[WIKI EN ERROR]:', e.message);
+        }
+    }
+    return null;
+}
+
+async function fetchVagalumeArtist(artistName) {
+    try {
+        const slug = artistName.toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+        if (!slug) return null;
+
+        const res = await fetchWithTimeout(`https://www.vagalume.com.br/${slug}/index.js`, {
+            headers: { 'Accept': 'application/json' }
+        }, 3500);
+        if (res.ok) {
+            const data = await res.json();
+            const art = data.artist;
+            if (art && (art.desc || art.genre)) {
+                return {
+                    name: art.desc || artistName,
+                    biography: art.bio?.text || null,
+                    image: art.pic_medium ? `https://www.vagalume.com.br${art.pic_medium}` : null,
+                    genre: art.genre?.map(g => g.name).join(', ') || null,
+                    source: 'Vagalume'
+                };
+            }
+        }
+    } catch {}
+    return null;
+}
+
+async function fetchLastFmArtist(artistName) {
+    try {
+        const url = `https://ws.audioscrobbler.com/2.0/?method=artist.getinfo&artist=${encodeURIComponent(artistName)}&api_key=b25b959554ed76058ac220b7b2e0a026&format=json&autocorrect=1`;
+        const res = await fetchWithTimeout(url, {}, 3500);
+        if (res.ok) {
+            const data = await res.json();
+            const art = data.artist;
+            const bio = art?.bio?.summary || art?.bio?.content;
+            if (bio) {
+                const cleanBio = bio.replace(/<a\b[^>]*>.*?<\/a>/ig, '').replace(/<[^>]*>/g, '').trim();
+                if (cleanBio.length > 50) {
+                    const img = art.image?.find(i => i.size === 'extralarge' || i.size === 'mega')?.['#text'] || null;
+                    return {
+                        name: art.name || artistName,
+                        biography: cleanBio,
+                        image: img || null,
+                        genre: art.tags?.tag?.map(t => t.name).slice(0, 3).join(', ') || null,
+                        source: 'Last.fm'
+                    };
+                }
+            }
+        }
+    } catch {}
+    return null;
+}
+
 app.get('/api/artist', async (req, res) => {
     const artist = String(req.query.name || '').trim();
-    if (!artist) return res.status(400).json({ biography: null });
+    if (!artist || isStationIdentifier(artist, '')) {
+        return res.status(400).json({ biography: null });
+    }
+
+    const cacheKey = normalizeMetadata(artist);
+    if (artistCache.has(cacheKey)) {
+        return res.json(artistCache.get(cacheKey));
+    }
 
     try {
-        const response = await fetchWithTimeout(
-            `https://www.theaudiodb.com/api/v1/json/2/search.php?s=${encodeURIComponent(artist)}`,
-            {},
-            5000
-        );
-        const data = await response.json();
-        const result = data.artists?.[0];
+        let artistData = null;
 
-        if (!result) return res.status(404).json({ biography: null });
+        // 1. Tenta TheAudioDB
+        try {
+            const response = await fetchWithTimeout(
+                `https://www.theaudiodb.com/api/v1/json/2/search.php?s=${encodeURIComponent(toTitleCase(artist))}`,
+                {},
+                3500
+            );
+            if (response.ok) {
+                const data = await response.json();
+                const result = data.artists?.[0];
+                if (result && (result.strBiographyPT || result.strBiographyEN)) {
+                    artistData = {
+                        name: result.strArtist || artist,
+                        biography: result.strBiographyPT || result.strBiographyEN,
+                        image: result.strArtistWideThumb || result.strArtistThumb || null,
+                        genre: result.strGenre || null,
+                        country: result.strCountry || null,
+                        source: 'TheAudioDB'
+                    };
+                }
+            }
+        } catch {}
 
-        res.json({
-            name: result.strArtist || artist,
-            biography: result.strBiographyPT || result.strBiographyEN || null,
-            image: result.strArtistWideThumb || result.strArtistThumb || null,
-            genre: result.strGenre || null,
-            country: result.strCountry || null
-        });
+        // 2. Consulta a Wikipédia em Português com Busca Semântica e Variações
+        if (!artistData || !artistData.biography || (artistData.biography.length < 60 && !artistData.image)) {
+            const wikiData = await fetchWikipediaArtist(artist);
+            if (wikiData) {
+                artistData = {
+                    name: wikiData.name || artist,
+                    biography: wikiData.biography,
+                    image: wikiData.image || artistData?.image || null,
+                    genre: wikiData.description || artistData?.genre || null,
+                    country: artistData?.country || null,
+                    source: wikiData.source
+                };
+            }
+        }
+
+        // 3. Fallback no Vagalume (Excelente para artistas e bandas brasileiras como Melim)
+        if (!artistData || !artistData.biography) {
+            const vagalumeData = await fetchVagalumeArtist(artist);
+            if (vagalumeData && vagalumeData.biography) {
+                artistData = vagalumeData;
+            }
+        }
+
+        // 4. Fallback no Last.fm
+        if (!artistData || !artistData.biography) {
+            const lastFmData = await fetchLastFmArtist(artist);
+            if (lastFmData && lastFmData.biography) {
+                artistData = lastFmData;
+            }
+        }
+
+        // 5. Fallback de imagem de alta qualidade via Deezer se ainda não tiver imagem
+        if (artistData && !artistData.image) {
+            const deezerImg = await fetchDeezerArtistImage(artistData.name || artist);
+            if (deezerImg) artistData.image = deezerImg;
+        }
+
+        if (artistData && artistData.biography) {
+            artistCache.set(cacheKey, artistData);
+            if (artistCache.size > 200) {
+                artistCache.delete(artistCache.keys().next().value);
+            }
+            return res.json(artistData);
+        }
+
+        res.status(404).json({ biography: null });
     } catch (error) {
         console.error('[ARTIST ERROR]:', error.message);
         res.status(502).json({ biography: null });

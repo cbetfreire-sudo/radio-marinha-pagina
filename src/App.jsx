@@ -254,8 +254,8 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
     <div className="lyrics-view">
       <div className="lyrics-toolbar">
         <span className="lyrics-sync-status" role="status" aria-live="polite">
-          <i aria-hidden="true" />
           {manualPause ? "Rolagem pausada" : parsedLyrics.synced ? "Sincronizada" : "Acompanhamento aproximado"}
+          <i aria-hidden="true" />
         </span>
         <div className="lyrics-toolbar-actions">
           <div className="lyrics-timing" role="group" aria-label="Ajustar a sincronia da letra">
@@ -939,56 +939,82 @@ function formatClock(seconds) {
   return `${minutes}:${rest}`;
 }
 
+function parseTimeMinutes(value, isEndTime = false) {
+  if (!value) return 0;
+  const [hours, minutes] = value.split(":").map(Number);
+  const total = (hours || 0) * 60 + (minutes || 0);
+  if (isEndTime && (value.trim() === "24:00" || (value.trim() === "00:00" && total === 0))) {
+    return 1440;
+  }
+  return total;
+}
+
 function getCurrentProgram(schedule, date = new Date()) {
+  if (!schedule || !schedule.length) return "Programação ao vivo";
   const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
   const programs = schedule[dayIndex] || [];
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
-  const toMinutes = (value) => {
-    const [hours, minutes] = value.split(":").map(Number);
-    return hours * 60 + minutes;
-  };
 
   const scheduledProgram = programs.find(([time]) => {
     const [startText, endText] = time.split(/\s*[–-]\s*/);
     if (!endText) return false;
-    return currentMinutes >= toMinutes(startText) && currentMinutes < toMinutes(endText);
+    const startMin = parseTimeMinutes(startText, false);
+    const endMin = parseTimeMinutes(endText, true);
+    return currentMinutes >= startMin && currentMinutes < endMin;
   });
 
   return scheduledProgram?.[1] || "Programação ao vivo";
 }
 
 function getUpcomingProgramsList(schedule, date = new Date(), limit = 6) {
-  const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
-  const programs = schedule[dayIndex] || [];
+  if (!schedule || !schedule.length) return [];
+  const currentDayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
-  const toMinutes = (value) => {
-    const [hours, minutes] = value.split(":").map(Number);
-    return hours * 60 + minutes;
-  };
-
-  const currentIndex = programs.findIndex(([time]) => {
-    const [startText, endText] = time.split(/\s*[–-]\s*/);
-    if (!endText) return false;
-    return currentMinutes >= toMinutes(startText) && currentMinutes < toMinutes(endText);
-  });
 
   const upcoming = [];
-  const startIndex = currentIndex !== -1 ? currentIndex + 1 : 0;
 
-  for (let i = startIndex; i < programs.length; i += 1) {
-    const [time, title, description] = programs[i];
+  // 1. Programas restantes no dia de hoje
+  const todayPrograms = schedule[currentDayIndex] || [];
+  const currentProgramIndex = todayPrograms.findIndex(([time]) => {
+    const [startText, endText] = time.split(/\s*[–-]\s*/);
+    if (!endText) return false;
+    const startMin = parseTimeMinutes(startText, false);
+    const endMin = parseTimeMinutes(endText, true);
+    return currentMinutes >= startMin && currentMinutes < endMin;
+  });
+
+  const startIndex = currentProgramIndex !== -1 ? currentProgramIndex + 1 : 0;
+  for (let i = startIndex; i < todayPrograms.length; i += 1) {
+    const [time, title, description] = todayPrograms[i];
     const [startTime] = time.split(/\s*[–-]\s*/);
-    upcoming.push({ title, description, time: startTime, fullTime: time, isTomorrow: false });
+    if (currentProgramIndex === -1 && parseTimeMinutes(startTime, false) <= currentMinutes) {
+      continue;
+    }
+    upcoming.push({
+      title,
+      description,
+      time: startTime,
+      fullTime: time,
+      isNextDay: false
+    });
     if (upcoming.length >= limit) return upcoming;
   }
 
-  const nextDayIndex = (dayIndex + 1) % 7;
-  const nextDayPrograms = schedule[nextDayIndex] || [];
-  for (let i = 0; i < nextDayPrograms.length; i += 1) {
-    const [time, title, description] = nextDayPrograms[i];
-    const [startTime] = time.split(/\s*[–-]\s*/);
-    upcoming.push({ title, description, time: startTime, fullTime: time, isTomorrow: true });
-    if (upcoming.length >= limit) break;
+  // 2. Se acabaram TODOS os programas de hoje, exibir ESTRITAMENTE APENAS O PRÓXIMO programa do dia seguinte
+  if (upcoming.length === 0) {
+    const nextDayIndex = (currentDayIndex + 1) % 7;
+    const nextDayPrograms = schedule[nextDayIndex] || [];
+    if (nextDayPrograms.length > 0) {
+      const [time, title, description] = nextDayPrograms[0];
+      const [startTime] = time.split(/\s*[–-]\s*/);
+      upcoming.push({
+        title,
+        description,
+        time: startTime,
+        fullTime: time,
+        isNextDay: true
+      });
+    }
   }
 
   return upcoming;
@@ -1032,7 +1058,7 @@ function UpcomingProgramsTicker({ programs = [], onOpenSchedule }) {
           {programs.map((prog, i) => (
             <div className="program-roulette-stage" key={i}>
               <span className="roulette-time-badge">
-                {prog.isTomorrow ? `Amanhã ${prog.time}` : `Às ${prog.time}`}
+                {prog.isNextDay ? `Amanhã ${prog.time}` : `Às ${prog.time}`}
               </span>
               <span className="roulette-program-name">{prog.title}</span>
               <span className="roulette-divider">•</span>
@@ -1057,6 +1083,221 @@ function UpcomingProgramsTicker({ programs = [], onOpenSchedule }) {
         </div>
       )}
     </div>
+  );
+}
+
+function RealisticHelmPlayButton({ playing, loading, onClick }) {
+  const wheelRef = useRef(null);
+  const angleRef = useRef(0);
+  const velocityRef = useRef(0);
+
+  useEffect(() => {
+    let animationFrameId;
+    let lastTime = performance.now();
+
+    const animate = (currentTime) => {
+      const deltaTime = Math.min(48, Math.max(0, currentTime - lastTime)) / 1000;
+      lastTime = currentTime;
+
+      const targetVelocity = playing ? 26 : 0; // 26 graus/s
+      const friction = playing ? 3.0 : 1.6; // Aceleração suave e frenagem gradual
+      velocityRef.current += (targetVelocity - velocityRef.current) * Math.min(1, friction * deltaTime);
+
+      angleRef.current = (angleRef.current + velocityRef.current * deltaTime) % 360;
+
+      if (wheelRef.current) {
+        wheelRef.current.style.transform = `rotate(${angleRef.current.toFixed(2)}deg)`;
+      }
+
+      if (playing || velocityRef.current > 0.05) {
+        animationFrameId = requestAnimationFrame(animate);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [playing]);
+
+  const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+  const ropeAngles = [22.5, 112.5, 202.5, 292.5]; // As 4 amarras de corda náutica
+
+  return (
+    <button
+      className="realistic-helm-button"
+      onClick={onClick}
+      aria-label={playing ? "Pausar rádio" : "Ouvir rádio"}
+      type="button"
+    >
+      <div className="realistic-helm-aura" aria-hidden="true" />
+      <svg
+        className="realistic-helm-svg"
+        viewBox="0 0 200 200"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+      >
+        <defs>
+          {/* Madeira Naval Autêntica e Homogênea (Cedro / Teca Realista) */}
+          <linearGradient id="timaoCoverGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#7E5935" />
+            <stop offset="30%" stopColor="#674729" />
+            <stop offset="70%" stopColor="#54381F" />
+            <stop offset="100%" stopColor="#3E2815" />
+          </linearGradient>
+
+          {/* Gradiente de Brilho e Relevo 3D da Madeira */}
+          <linearGradient id="timaoWoodHighlight" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="rgba(255, 255, 255, 0.40)" />
+            <stop offset="25%" stopColor="rgba(255, 255, 255, 0.10)" />
+            <stop offset="70%" stopColor="rgba(0, 0, 0, 0.25)" />
+            <stop offset="100%" stopColor="rgba(0, 0, 0, 0.65)" />
+          </linearGradient>
+
+          {/* Gradiente das Cordas Náuticas de Sisal (4 Amarras Douradas) */}
+          <linearGradient id="timaoRopeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#7A5828" />
+            <stop offset="25%" stopColor="#D4AD6A" />
+            <stop offset="50%" stopColor="#F7E6B8" />
+            <stop offset="75%" stopColor="#C4975A" />
+            <stop offset="100%" stopColor="#68471D" />
+          </linearGradient>
+
+          {/* Cubo Central Convexo em Madeira Nobre Escurecida */}
+          <radialGradient id="timaoHubGradient" cx="35%" cy="35%" r="65%">
+            <stop offset="0%" stopColor="rgba(255, 255, 255, 0.35)" />
+            <stop offset="35%" stopColor="#543A22" />
+            <stop offset="75%" stopColor="#382514" />
+            <stop offset="100%" stopColor="#1E130A" />
+          </radialGradient>
+
+          {/* Sombra de Profundidade */}
+          <filter id="timaoShadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="5" stdDeviation="6" floodColor="#000000" floodOpacity="0.55" />
+          </filter>
+
+          {/* Gradiente do Símbolo de Vidro 3D em Cristal Diamante Límpido */}
+          <linearGradient id="glass3dGradSymbol" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#FFFFFF" />
+            <stop offset="45%" stopColor="rgba(255, 255, 255, 0.95)" />
+            <stop offset="85%" stopColor="rgba(240, 248, 255, 0.85)" />
+            <stop offset="100%" stopColor="rgba(220, 235, 250, 0.65)" />
+          </linearGradient>
+
+          {/* Sombra 3D do Símbolo */}
+          <filter id="glass3dDropShadow" x="-30%" y="-30%" width="160%" height="160%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="2" floodColor="#000000" floodOpacity="0.65" />
+          </filter>
+
+          {/* Definição de 1 Malagueta Torneada (Pega de Madeira Naval) */}
+          <g id="timaoHandle">
+            {/* Contorno orgânico da malagueta */}
+            <path
+              d="M 95.5 34 C 95.5 30, 96.8 25, 96.2 23 C 95 20, 94.2 14, 96 11 C 97.6 8.5, 102.4 8.5, 104 11 C 105.8 14, 105 20, 103.8 23 C 103.2 25, 104.5 30, 104.5 34 Z"
+              fill="url(#timaoCoverGradient)"
+            />
+            {/* Brilho e rebaixo chanfrado */}
+            <path
+              d="M 95.5 34 C 95.5 30, 96.8 25, 96.2 23 C 95 20, 94.2 14, 96 11 C 97.6 8.5, 102.4 8.5, 104 11 C 105.8 14, 105 20, 103.8 23 C 103.2 25, 104.5 30, 104.5 34 Z"
+              fill="url(#timaoWoodHighlight)"
+              opacity="0.65"
+            />
+            {/* Anéis torneados de acabamento na madeira */}
+            <circle cx="100" cy="11.5" r="3.2" fill="url(#timaoCoverGradient)" stroke="rgba(0,0,0,0.3)" strokeWidth="0.8" />
+            <line x1="96.5" y1="23.5" x2="103.5" y2="23.5" stroke="rgba(0,0,0,0.4)" strokeWidth="1" />
+            <line x1="95.5" y1="33" x2="104.5" y2="33" stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
+          </g>
+
+          {/* Definição de 1 Raio de Madeira (Spoke) */}
+          <g id="timaoSpoke">
+            <rect x="97.6" y="55" width="4.8" height="20" rx="1.5" fill="url(#timaoCoverGradient)" />
+            <rect x="97.6" y="55" width="4.8" height="20" rx="1.5" fill="url(#timaoWoodHighlight)" opacity="0.6" />
+          </g>
+
+          {/* Definição de 1 Amarra de Corda Náutica (5 Voltas) */}
+          <g id="timaoRopeWrap">
+            <g transform="translate(0, 32.5)">
+              <rect x="92" y="0" width="16" height="4.2" rx="2.1" fill="url(#timaoRopeGrad)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+              <rect x="92" y="4" width="16" height="4.2" rx="2.1" fill="url(#timaoRopeGrad)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+              <rect x="92" y="8" width="16" height="4.2" rx="2.1" fill="url(#timaoRopeGrad)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+              <rect x="92" y="12" width="16" height="4.2" rx="2.1" fill="url(#timaoRopeGrad)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+              <rect x="92" y="16" width="16" height="4.2" rx="2.1" fill="url(#timaoRopeGrad)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+              <rect x="92" y="20" width="16" height="4.2" rx="2.1" fill="url(#timaoRopeGrad)" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+            </g>
+          </g>
+        </defs>
+
+        {/* Timão Rotativo Completo (com inércia e aceleração suave) */}
+        <g ref={wheelRef} className="realistic-helm-rotor" filter="url(#timaoShadow)">
+          {/* 8 Raios de Madeira */}
+          {angles.map((deg) => (
+            <use key={`spoke-${deg}`} href="#timaoSpoke" transform={`rotate(${deg} 100 100)`} />
+          ))}
+
+          {/* Aro Espesso e Maciço de Madeira (com texturas de anéis) */}
+          <circle cx="100" cy="100" r="55" stroke="url(#timaoCoverGradient)" strokeWidth="22" fill="none" />
+          <circle cx="100" cy="100" r="55" stroke="url(#timaoWoodHighlight)" strokeWidth="22" opacity="0.6" fill="none" />
+
+          {/* Detalhes de textura e chanfros do aro */}
+          <circle cx="100" cy="100" r="44" stroke="rgba(0, 0, 0, 0.55)" strokeWidth="1.5" fill="none" />
+          <circle cx="100" cy="100" r="45.5" stroke="rgba(255, 255, 255, 0.25)" strokeWidth="0.8" fill="none" />
+          <circle cx="100" cy="100" r="66" stroke="rgba(0, 0, 0, 0.6)" strokeWidth="1.5" fill="none" />
+          <circle cx="100" cy="100" r="64.5" stroke="rgba(255, 255, 255, 0.3)" strokeWidth="0.8" fill="none" />
+          <circle cx="100" cy="100" r="51" stroke="rgba(255, 255, 255, 0.15)" strokeWidth="0.8" strokeDasharray="10 5 16 6" fill="none" />
+          <circle cx="100" cy="100" r="58" stroke="rgba(0, 0, 0, 0.3)" strokeWidth="0.8" strokeDasharray="14 6 8 8" fill="none" />
+
+          {/* As 4 Amarras de Corda Náutica de Sisal no Aro */}
+          {ropeAngles.map((deg) => (
+            <use key={`rope-${deg}`} href="#timaoRopeWrap" transform={`rotate(${deg} 100 100)`} />
+          ))}
+
+          {/* As 8 Malaguetas Torneadas */}
+          {angles.map((deg) => (
+            <use key={`handle-${deg}`} href="#timaoHandle" transform={`rotate(${deg} 100 100)`} />
+          ))}
+        </g>
+
+        {/* Cubo Central Fixo com Textura, Gradiente da Capa e Ícone 3D em Vidro Integrado */}
+        <g className="realistic-helm-center">
+          <circle cx="100" cy="100" r="29" fill="url(#timaoHubGradient)" stroke="rgba(0,0,0,0.60)" strokeWidth="2.8" />
+          <circle cx="100" cy="100" r="27.2" stroke="rgba(255, 255, 255, 0.35)" strokeWidth="0.8" fill="none" />
+          <circle cx="100" cy="100" r="23.5" stroke="rgba(0, 0, 0, 0.25)" strokeWidth="1" strokeDasharray="2 3" fill="none" />
+
+          {/* Símbolos Centralizados Perfeitamente em (100, 100) em Tamanho Generoso */}
+          {loading ? (
+            <g className="helm-svg-spinner">
+              <circle cx="100" cy="100" r="16" stroke="rgba(var(--cover-contrast-rgb, 245, 215, 150), 0.25)" strokeWidth="3" fill="none" />
+              <circle cx="100" cy="100" r="16" stroke="rgb(var(--cover-contrast-rgb, 245, 215, 150))" strokeWidth="3" strokeDasharray="30 60" strokeLinecap="round" fill="none" />
+            </g>
+          ) : playing ? (
+            <g className="glass-pause-3d-group" filter="url(#glass3dDropShadow)">
+              {/* Barra Esquerda 3D (x: 88.5 .. 96.5, center 92.5) */}
+              <rect x="88.5" y="85.5" width="8.0" height="29" rx="4.0" fill="url(#glass3dGradSymbol)" stroke="rgba(255,255,255,0.8)" strokeWidth="0.9" />
+              <rect x="89.8" y="87.0" width="2.4" height="14" rx="1.2" fill="rgba(255,255,255,0.65)" />
+              {/* Barra Direita 3D (x: 103.5 .. 111.5, center 107.5) */}
+              {/* Centro exato das duas barras = (88.5 + 111.5) / 2 = 100.0 */}
+              <rect x="103.5" y="85.5" width="8.0" height="29" rx="4.0" fill="url(#glass3dGradSymbol)" stroke="rgba(255,255,255,0.8)" strokeWidth="0.9" />
+              <rect x="104.8" y="87.0" width="2.4" height="14" rx="1.2" fill="rgba(255,255,255,0.65)" />
+            </g>
+          ) : (
+            <g className="glass-play-3d-group" filter="url(#glass3dDropShadow)">
+              {/* Triângulo de Vidro 3D Ampliado e Perfeitamente Centralizado em (100, 100) */}
+              {/* Base em x=90.0, Vértice em x=115.0, Centro Ótico exato em x=100.0 */}
+              <path
+                d="M 90.0 85.0 C 90.0 83.6, 91.5 82.8, 92.7 83.5 L 114.5 96.6 C 115.8 97.4, 115.8 99.4, 114.5 100.2 L 92.7 113.3 C 91.5 114.0, 90.0 113.2, 90.0 111.8 Z"
+                fill="url(#glass3dGradSymbol)"
+                stroke="rgba(255, 255, 255, 0.8)"
+                strokeWidth="0.9"
+              />
+              {/* Faceta de Reflexo Especular Superior do Vidro 3D */}
+              <path
+                d="M 91.5 87.0 L 109.8 98.0 L 91.5 100.5 Z"
+                fill="rgba(255, 255, 255, 0.6)"
+              />
+            </g>
+          )}
+        </g>
+      </svg>
+    </button>
   );
 }
 
@@ -1598,10 +1839,37 @@ export default function App() {
     setTimerOpen(false);
   }
 
+  function getContrastColor(rgb1, rgb2) {
+    if (!rgb1) return "245, 215, 150";
+    const [r1, g1, b1] = rgb1.split(",").map(Number);
+    const [r2, g2, b2] = (rgb2 || rgb1).split(",").map(Number);
+
+    const lum1 = (r1 * 299 + g1 * 587 + b1 * 114) / 1000;
+    const lum2 = (r2 * 299 + g2 * 587 + b2 * 114) / 1000;
+
+    // Escolhe a cor com maior luminância para garantir o maior contraste contra o cubo escuro
+    const chosen = lum1 >= lum2 ? [r1, g1, b1, lum1] : [r2, g2, b2, lum2];
+    let [r, g, b, lum] = chosen;
+
+    // Se ambas forem escuras, projeta luminosidade para legibilidade cristalina
+    if (lum < 140) {
+      const factor = (180 - lum) / 255;
+      r = Math.min(255, Math.round(r + (255 - r) * factor));
+      g = Math.min(255, Math.round(g + (255 - g) * factor));
+      b = Math.min(255, Math.round(b + (255 - b) * factor));
+    }
+    return `${r}, ${g}, ${b}`;
+  }
+
   const dynamicCoverStyle = coverPalette ? {
     "--cover-rgb-1": coverPalette.primary,
     "--cover-rgb-2": coverPalette.secondary,
-  } : undefined;
+    "--cover-contrast-rgb": getContrastColor(coverPalette.primary, coverPalette.secondary),
+  } : {
+    "--cover-rgb-1": "196, 151, 90",
+    "--cover-rgb-2": "42, 143, 180",
+    "--cover-contrast-rgb": "245, 215, 150",
+  };
 
   return (
     <main className={`app ${playing ? "is-playing" : ""} ${loading ? "is-loading" : ""}`} style={dynamicCoverStyle}>
@@ -1639,13 +1907,11 @@ export default function App() {
             </div>
 
             <div className="main-controls">
-              <button className="play" onClick={toggleRadio} aria-label={playing ? "Pausar rádio" : "Ouvir rádio"}>
-                {loading ? <span className="spinner" /> : (
-                  <span className={`play-symbol ${playing ? "pause-state" : "play-state"}`} aria-hidden="true">
-                    {playing && <><i /><i /></>}
-                  </span>
-                )}
-              </button>
+              <RealisticHelmPlayButton
+                playing={playing}
+                loading={loading}
+                onClick={toggleRadio}
+              />
             </div>
 
             <div className="volume-control">
@@ -1708,8 +1974,86 @@ export default function App() {
 
             <div className="tab-content" style={dynamicCoverStyle}>
               {panel === "radio" && <div className="welcome-content"><p className="section-kicker">CONTEÚDO DA FAIXA</p><h2>Conheça o que está tocando</h2><p>Abra a letra da música ou conheça a trajetória do artista enquanto acompanha a transmissão.</p><div className="content-shortcuts"><button onClick={() => setPanel("lyrics")}>Ver letra <span>→</span></button><button onClick={() => setPanel("artist")}>Sobre o artista <span>→</span></button></div></div>}
-              {panel === "lyrics" && <div className="lyrics-content"><div className="content-heading"><div><p className="section-kicker">LETRA</p><h2>{track.title}</h2></div><span>{track.artist}</span></div>{lyricsLoading ? <div className="content-loading"><span className="spinner" /> Buscando letra…</div> : lyrics ? <AutoScrollingLyrics active={playing && !loading} audioRef={audioRef} duration={lyricsDuration || (track.durationReliable ? track.duration : 0)} elapsed={track.elapsed} latency={streamLatency} lyrics={lyrics} playbackSampledAt={track.playbackSampledAt} trackKey={playbackKey} title={track.title} /> : <div className="empty-state"><strong>Letra não disponível</strong><p>Não encontramos uma letra confiável para esta faixa.</p></div>}</div>}
-              {panel === "artist" && <div className="artist-content">{artistLoading ? <div className="content-loading"><span className="spinner" /> Buscando artista…</div> : artistInfo?.biography ? <><div className="artist-heading">{artistInfo.image && <img src={artistInfo.image} alt={artistInfo.name} />}<div><p className="section-kicker">SOBRE O ARTISTA</p><h2>{artistInfo.name || track.artist}</h2><span>{[artistInfo.genre, artistInfo.country].filter(Boolean).join(" • ")}</span></div></div><p className="biography">{artistInfo.biography}</p></> : <div className="empty-state"><strong>História não disponível</strong><p>A biografia de {track.artist} ainda não foi encontrada em nossa fonte.</p></div>}</div>}
+              {panel === "lyrics" && (
+                <div className="lyrics-content">
+                  <div className="content-heading">
+                    <div>
+                      <p className="section-kicker">LETRA</p>
+                      <h2>{track.title}</h2>
+                    </div>
+                    <span>{track.artist}</span>
+                  </div>
+                  {lyricsLoading ? (
+                    <div className="content-loading"><span className="spinner" /> Buscando letra…</div>
+                  ) : lyrics ? (
+                    <AutoScrollingLyrics
+                      active={playing && !loading}
+                      audioRef={audioRef}
+                      duration={lyricsDuration || (track.durationReliable ? track.duration : 0)}
+                      elapsed={track.elapsed}
+                      latency={streamLatency}
+                      lyrics={lyrics}
+                      playbackSampledAt={track.playbackSampledAt}
+                      trackKey={playbackKey}
+                      title={track.title}
+                    />
+                  ) : (
+                    <div className="lyrics-fallback-view">
+                      <div className="lyrics-fallback-notice">
+                        <span>ℹ️ Letra não disponível no catálogo — Conheça a história do artista abaixo</span>
+                      </div>
+                      {artistLoading ? (
+                        <div className="content-loading"><span className="spinner" /> Buscando informações do artista…</div>
+                      ) : artistInfo?.biography ? (
+                        <div className="lyrics-artist-card">
+                          <div className="artist-heading">
+                            {artistInfo.image && (
+                              <img src={artistInfo.image} alt={artistInfo.name} onError={(e) => { e.target.style.display = 'none'; }} />
+                            )}
+                            <div>
+                              <p className="section-kicker">SOBRE O ARTISTA</p>
+                              <h2>{artistInfo.name || track.artist}</h2>
+                              <span>{[artistInfo.genre, artistInfo.country].filter(Boolean).join(" • ")}</span>
+                            </div>
+                          </div>
+                          <p className="biography">{artistInfo.biography}</p>
+                        </div>
+                      ) : (
+                        <div className="empty-state">
+                          <strong>Letra não disponível</strong>
+                          <p>Não encontramos uma letra nem biografia correspondente para esta faixa.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+              {panel === "artist" && (
+                <div className="artist-content">
+                  {artistLoading ? (
+                    <div className="content-loading"><span className="spinner" /> Buscando artista…</div>
+                  ) : artistInfo?.biography ? (
+                    <>
+                      <div className="artist-heading">
+                        {artistInfo.image && (
+                          <img src={artistInfo.image} alt={artistInfo.name} onError={(e) => { e.target.style.display = 'none'; }} />
+                        )}
+                        <div>
+                          <p className="section-kicker">SOBRE O ARTISTA</p>
+                          <h2>{artistInfo.name || track.artist}</h2>
+                          <span>{[artistInfo.genre, artistInfo.country].filter(Boolean).join(" • ")}</span>
+                        </div>
+                      </div>
+                      <p className="biography">{artistInfo.biography}</p>
+                    </>
+                  ) : (
+                    <div className="empty-state">
+                      <strong>História não disponível</strong>
+                      <p>A biografia de {track.artist} ainda não foi encontrada em nossa fonte.</p>
+                    </div>
+                  )}
+                </div>
+              )}
               {panel === "recent" && <div className="recent-content">
                 <div className="content-heading">
                   <div>
