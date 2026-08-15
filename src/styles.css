@@ -148,10 +148,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   text-align: center;
-  gap: clamp(8px, 1.4vh, 16px);
+  gap: clamp(8px, 1.5vh, 16px);
   padding: clamp(16px, 2.4vw, 32px) clamp(20px, 2.8vw, 40px);
   height: 100%;
   min-height: 0;
@@ -789,7 +789,26 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
 .timeline-action-btn.copied { color: var(--signal-green); border-color: rgba(54, 179, 126, 0.30); background: rgba(54, 179, 126, 0.10); }
 
 /* ── Messages & Misc ─────────────────────────────────────── */
-.message { margin: 8px 0 0; color: var(--brass-300); font-size: .72rem; }
+.message {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 90%;
+  margin: 0;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(11, 20, 38, 0.90);
+  border: 1px solid rgba(196, 151, 90, 0.35);
+  color: var(--brass-300);
+  font-size: .68rem;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.40);
+  pointer-events: none;
+  z-index: 15;
+  animation: modalIn .25s ease-out;
+}
 .section-kicker { margin-bottom: 8px !important; color: var(--ocean-300) !important; font-size: .62rem !important; font-weight: 800; letter-spacing: .16em; }
 .welcome-content h2 { font-size: 1.35rem; }
 .content-shortcuts { display: flex; gap: 10px; margin-top: 20px; }
@@ -1120,10 +1139,10 @@ footer {
   .hero {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     text-align: center;
-    gap: clamp(6px, 1.2vh, 14px);
+    gap: clamp(6px, 1.3vh, 14px);
     padding: clamp(12px, 1.8vh, 24px) clamp(18px, 2.5vw, 36px);
     height: 100%;
     min-height: 0;
