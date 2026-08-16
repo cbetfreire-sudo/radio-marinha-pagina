@@ -2313,11 +2313,21 @@ export default function App() {
                             Turnê de <b>{track.artist}</b>
                           </h3>
                           <p className="artist-tour-desc">
-                            Pesquise ingressos oficiais e datas de apresentações ao vivo:
+                            Encontre ingressos oficiais e datas de shows em qualquer plataforma:
                           </p>
                           <div className="artist-tour-actions">
                             <a
-                              href={`https://www.sympla.com.br/eventos?s=${encodeURIComponent(track.artist)}`}
+                              href={`https://www.google.com/search?q=${encodeURIComponent('ingressos show turne ' + track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="tour-btn tour-google"
+                              title="Buscar todas as vendas oficiais de ingressos no Brasil"
+                            >
+                              <span>Buscar Ingressos</span>
+                              <ActionIcon name="external" />
+                            </a>
+                            <a
+                              href={`https://www.sympla.com.br/eventos?s=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="tour-btn tour-sympla"
@@ -2326,7 +2336,7 @@ export default function App() {
                               <ActionIcon name="external" />
                             </a>
                             <a
-                              href={`https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(track.artist)}`}
+                              href={`https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="tour-btn tour-eventim"
@@ -2335,12 +2345,12 @@ export default function App() {
                               <ActionIcon name="external" />
                             </a>
                             <a
-                              href={`https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(track.artist)}`}
+                              href={`https://www.ticketmaster.com.br/search?q=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="tour-btn tour-bd"
+                              className="tour-btn tour-tm"
                             >
-                              <span>Bilheteria Digital</span>
+                              <span>Ticketmaster</span>
                               <ActionIcon name="external" />
                             </a>
                           </div>

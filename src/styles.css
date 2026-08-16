@@ -1163,6 +1163,17 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   transition: all .2s ease;
 }
 .tour-btn .action-icon { width: 11px; height: 11px; }
+.tour-google {
+  background: linear-gradient(135deg, rgba(196, 151, 90, 0.35), rgba(196, 151, 90, 0.15));
+  border-color: rgba(196, 151, 90, 0.50);
+  color: var(--gold-300);
+}
+.tour-google:hover {
+  background: var(--gold-400);
+  color: #0b1426;
+  border-color: var(--gold-300);
+  transform: translateY(-1px);
+}
 .tour-sympla:hover {
   background: #00D8A5;
   color: #032b21;
@@ -1175,10 +1186,10 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   border-color: #0050b3;
   transform: translateY(-1px);
 }
-.tour-bd:hover {
-  background: #E63946;
+.tour-tm:hover {
+  background: #026CDF;
   color: #fff;
-  border-color: #E63946;
+  border-color: #026CDF;
   transform: translateY(-1px);
 }
 
