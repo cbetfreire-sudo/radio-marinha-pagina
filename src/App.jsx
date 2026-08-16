@@ -2221,31 +2221,30 @@ export default function App() {
                     <div className="news-grid">
                       {filteredNews.map((item) => (
                         <article className="news-card" key={item.id}>
-                          {item.image && (
-                            <div className="news-thumb-wrap">
+                          <div className="news-thumb-wrap">
+                            {item.image ? (
                               <img
                                 src={item.image}
                                 alt=""
                                 className="news-thumb"
                                 loading="lazy"
                                 onError={(e) => {
-                                  if (e.target && e.target.parentElement) {
-                                    e.target.parentElement.style.display = 'none';
+                                  if (e.target) {
+                                    e.target.style.display = 'none';
                                   }
                                 }}
                               />
-                              <span className="news-source-badge" style={{ backgroundColor: item.tagColor || 'var(--ocean-500)' }}>
-                                {item.badge}
-                              </span>
-                            </div>
-                          )}
+                            ) : (
+                              <div className="news-thumb-fallback">
+                                <ActionIcon name="news" />
+                              </div>
+                            )}
+                            <span className="news-source-badge" style={{ backgroundColor: item.tagColor || 'var(--ocean-500)' }}>
+                              {item.badge}
+                            </span>
+                          </div>
                           <div className="news-body">
                             <div className="news-meta">
-                              {!item.image && (
-                                <span className="news-source-badge-inline" style={{ color: item.tagColor || 'var(--gold-400)' }}>
-                                  {item.badge}
-                                </span>
-                              )}
                               <time className="news-time">{formatRelativeTime(item.pubDate)}</time>
                             </div>
                             <h3 className="news-title">

@@ -902,7 +902,8 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   height: 84px;
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(11, 20, 38, 0.5);
+  background: linear-gradient(135deg, rgba(42, 143, 180, 0.20), rgba(11, 20, 38, 0.70));
+  border: 1px solid rgba(42, 143, 180, 0.25);
   flex-shrink: 0;
 }
 .news-thumb {
@@ -910,6 +911,20 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   height: 100%;
   object-fit: cover;
   transition: transform .3s ease;
+}
+.news-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ocean-300);
+  background: radial-gradient(circle at center, rgba(42, 143, 180, 0.25) 0%, rgba(11, 20, 38, 0.6) 100%);
+}
+.news-thumb-fallback .action-icon {
+  width: 28px;
+  height: 28px;
+  opacity: .75;
 }
 .news-card:hover .news-thumb {
   transform: scale(1.06);
