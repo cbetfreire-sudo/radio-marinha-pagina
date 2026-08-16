@@ -20,6 +20,47 @@ const WEEKEND_PROGRAMS = {
 };
 const DEFAULT_SCHEDULE = DAY_KEYS.map((_, dayIndex) => WEEKEND_PROGRAMS[dayIndex] || WEEKDAY_PROGRAMS);
 
+const BRAZILIAN_CAPITALS = [
+  { name: "Brasília", state: "DF" },
+  { name: "Rio de Janeiro", state: "RJ" },
+  { name: "São Paulo", state: "SP" },
+  { name: "Salvador", state: "BA" },
+  { name: "Belo Horizonte", state: "MG" },
+  { name: "Curitiba", state: "PR" },
+  { name: "Recife", state: "PE" },
+  { name: "Porto Alegre", state: "RS" },
+  { name: "Fortaleza", state: "CE" },
+  { name: "Manaus", state: "AM" },
+  { name: "Goiânia", state: "GO" },
+  { name: "Belém", state: "PA" },
+  { name: "Florianópolis", state: "SC" },
+  { name: "Vitória", state: "ES" },
+  { name: "Natal", state: "RN" },
+  { name: "Maceió", state: "AL" },
+  { name: "João Pessoa", state: "PB" },
+  { name: "Cuiabá", state: "MT" },
+  { name: "Campo Grande", state: "MS" }
+];
+
+function formatRelativeTime(dateString) {
+  try {
+    const d = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffMin < 1) return "agora mesmo";
+    if (diffMin < 60) return `há ${diffMin} min`;
+    if (diffHours < 24) return `há ${diffHours} h`;
+    if (diffDays === 1) return "ontem";
+    if (diffDays < 7) return `há ${diffDays} dias`;
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  } catch {
+    return "";
+  }
+}
+
 const initialTrack = {
   title: "Rádio Marinha",
   artist: "Programação ao vivo",
@@ -52,7 +93,13 @@ const ActionIcon = ({ name }) => {
     history: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /></>,
     next: <><polygon points="5 4 15 12 5 20 5 4" fill="currentColor" /><line x1="19" y1="5" x2="19" y2="19" strokeWidth="2.2" /></>,
     copy: <><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></>,
-    check: <polyline points="20 6 9 17 4 12" />
+    check: <polyline points="20 6 9 17 4 12" />,
+    news: <><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" /><path d="M18 14h-8M15 18h-5M10 6h8v4h-8V6Z" /></>,
+    ticket: <><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" /><path d="M13 5v2M13 11v2M13 17v2" /></>,
+    location: <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></>,
+    external: <><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></>,
+    refresh: <><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></>,
+    chevronDown: <polyline points="6 9 12 15 18 9" />
   };
   return <svg className="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 };
@@ -1424,6 +1471,81 @@ export default function App() {
   const [currentProgram, setCurrentProgram] = useState(() => getCurrentProgram(DEFAULT_SCHEDULE));
   const upcomingPrograms = useMemo(() => getUpcomingProgramsList(schedule), [schedule, currentProgram]);
 
+  // Estados de Notícias e Shows
+  const [news, setNews] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [newsFilter, setNewsFilter] = useState("all");
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+  const [selectedCity, setSelectedCity] = useState("Brasília");
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [citySearchInput, setCitySearchInput] = useState("");
+  const [eventsFallbackNotice, setEventsFallbackNotice] = useState(false);
+
+  const loadNews = useCallback(async (force = false) => {
+    setNewsLoading(true);
+    try {
+      const res = await fetch("/api/news");
+      const data = await res.json();
+      if (data && data.news) {
+        setNews(data.news);
+      }
+    } catch {
+      // mantém as anteriores
+    } finally {
+      setNewsLoading(false);
+    }
+  }, []);
+
+  const loadEventsForCity = useCallback(async (city) => {
+    setEventsLoading(true);
+    try {
+      const res = await fetch(`/api/events?city=${encodeURIComponent(city)}`);
+      const data = await res.json();
+      if (data && data.events) {
+        setEvents(data.events);
+        setEventsFallbackNotice(!!data.isFallback);
+      }
+    } catch {
+      setEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+
+  const loadLocationAndEvents = useCallback(async () => {
+    try {
+      const res = await fetch("/api/location");
+      const data = await res.json();
+      if (data && data.city) {
+        setUserLocation(data);
+        setSelectedCity(data.city);
+        loadEventsForCity(data.city);
+        return;
+      }
+    } catch {}
+    loadEventsForCity("Brasília");
+  }, [loadEventsForCity]);
+
+  useEffect(() => {
+    loadLocationAndEvents();
+  }, [loadLocationAndEvents]);
+
+  useEffect(() => {
+    if (panel === "news" && news.length === 0) {
+      loadNews();
+    }
+    if (panel === "shows" && events.length === 0) {
+      loadEventsForCity(selectedCity);
+    }
+  }, [panel, news.length, events.length, selectedCity, loadNews, loadEventsForCity]);
+
+  const filteredNews = useMemo(() => {
+    if (newsFilter === "all") return news;
+    return news.filter((item) => item.badge === newsFilter || item.source.includes(newsFilter));
+  }, [news, newsFilter]);
+
   displayedTrackRef.current = track;
   playingRef.current = playing;
   const favoriteKey = `${track.artist}—${track.title}`;
@@ -1972,6 +2094,8 @@ export default function App() {
             <nav className="tabs" aria-label="Conteúdo da rádio">
               <button className={panel === "lyrics" ? "active" : ""} onClick={() => setPanel("lyrics")}>Letra</button>
               <button className={panel === "artist" ? "active" : ""} onClick={() => setPanel("artist")}>Artista</button>
+              <button className={panel === "news" ? "active" : ""} onClick={() => setPanel("news")}>Notícias</button>
+              <button className={panel === "shows" ? "active" : ""} onClick={() => setPanel("shows")}>Shows</button>
               <button className={panel === "recent" ? "active" : ""} onClick={() => setPanel("recent")}>Recentes</button>
               <button className={panel === "favorites" ? "active" : ""} onClick={() => setPanel("favorites")}>Favoritos</button>
             </nav>
@@ -2058,6 +2182,175 @@ export default function App() {
                   )}
                 </div>
               )}
+              {panel === "news" && (
+                <div className="news-content">
+                  <div className="content-heading news-heading">
+                    <div>
+                      <p className="section-kicker">MUNDO DA MÚSICA</p>
+                      <h2>Últimas Notícias</h2>
+                    </div>
+                    <div className="news-toolbar-actions">
+                      <button
+                        className="news-refresh-btn"
+                        onClick={() => loadNews(true)}
+                        disabled={newsLoading}
+                        title="Atualizar feed de notícias"
+                        aria-label="Atualizar notícias"
+                      >
+                        <ActionIcon name="refresh" />
+                        <span>Atualizar</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="news-filter-chips" role="group" aria-label="Filtrar por portal">
+                    <button className={newsFilter === "all" ? "active" : ""} onClick={() => setNewsFilter("all")}>Todas</button>
+                    <button className={newsFilter === "Rolling Stone" ? "active" : ""} onClick={() => setNewsFilter("Rolling Stone")}>Rolling Stone</button>
+                    <button className={newsFilter === "Billboard" ? "active" : ""} onClick={() => setNewsFilter("Billboard")}>Billboard</button>
+                    <button className={newsFilter === "TMDQA!" ? "active" : ""} onClick={() => setNewsFilter("TMDQA!")}>TMDQA!</button>
+                    <button className={newsFilter === "G1 Música" ? "active" : ""} onClick={() => setNewsFilter("G1 Música")}>G1</button>
+                  </div>
+
+                  {newsLoading && news.length === 0 ? (
+                    <div className="content-loading"><span className="spinner" /> Carregando últimas notícias…</div>
+                  ) : filteredNews.length > 0 ? (
+                    <div className="news-grid">
+                      {filteredNews.map((item) => (
+                        <article className="news-card" key={item.id}>
+                          {item.image && (
+                            <div className="news-thumb-wrap">
+                              <img
+                                src={item.image}
+                                alt=""
+                                className="news-thumb"
+                                loading="lazy"
+                                onError={(e) => {
+                                  if (e.target && e.target.parentElement) {
+                                    e.target.parentElement.style.display = 'none';
+                                  }
+                                }}
+                              />
+                              <span className="news-source-badge" style={{ backgroundColor: item.tagColor || 'var(--ocean-500)' }}>
+                                {item.badge}
+                              </span>
+                            </div>
+                          )}
+                          <div className="news-body">
+                            <div className="news-meta">
+                              {!item.image && (
+                                <span className="news-source-badge-inline" style={{ color: item.tagColor || 'var(--gold-400)' }}>
+                                  {item.badge}
+                                </span>
+                              )}
+                              <time className="news-time">{formatRelativeTime(item.pubDate)}</time>
+                            </div>
+                            <h3 className="news-title">
+                              <a href={item.link} target="_blank" rel="noopener noreferrer">
+                                {item.title}
+                              </a>
+                            </h3>
+                            <p className="news-summary">{item.summary}</p>
+                            <a href={item.link} target="_blank" rel="noopener noreferrer" className="news-read-more">
+                              <span>Ler matéria completa</span>
+                              <ActionIcon name="external" />
+                            </a>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <strong>Nenhuma notícia encontrada</strong>
+                      <p>Tente selecionar outro filtro de portal ou clique no botão Atualizar.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {panel === "shows" && (
+                <div className="shows-content">
+                  <div className="content-heading shows-heading">
+                    <div>
+                      <p className="section-kicker">AGENDA DE SHOWS</p>
+                      <h2>Shows & Festivais</h2>
+                    </div>
+
+                    <button
+                      className="shows-city-selector-btn"
+                      onClick={() => setCityPickerOpen(true)}
+                      aria-label="Mudar cidade de shows"
+                      title="Clique para escolher outra cidade"
+                    >
+                      <ActionIcon name="location" />
+                      <span className="shows-city-name">{selectedCity}</span>
+                      <ActionIcon name="chevronDown" />
+                    </button>
+                  </div>
+
+                  {eventsFallbackNotice && (
+                    <div className="shows-fallback-banner">
+                      <span>📍 Sem shows cadastrados especificamente para <b>{selectedCity}</b>. Exibindo principais destaques nacionais:</span>
+                    </div>
+                  )}
+
+                  {eventsLoading ? (
+                    <div className="content-loading"><span className="spinner" /> Buscando shows em {selectedCity}…</div>
+                  ) : events.length > 0 ? (
+                    <div className="shows-grid">
+                      {events.map((evt) => {
+                        const dateParts = (evt.dateLabel || "").split(" ");
+                        const dayPart = dateParts[0] || "";
+                        const monthPart = dateParts.slice(1).join(" ") || "";
+                        return (
+                          <article className="show-card" key={evt.id}>
+                            <div className="show-badge-date">
+                              <span className="show-badge-day">{dayPart}</span>
+                              <span className="show-badge-month">{monthPart}</span>
+                            </div>
+                            {evt.image && (
+                              <div className="show-cover-wrap">
+                                <img
+                                  src={evt.image}
+                                  alt={evt.artist}
+                                  className="show-cover"
+                                  loading="lazy"
+                                  onError={(e) => {
+                                    if (e.target && e.target.parentElement) {
+                                      e.target.parentElement.style.display = 'none';
+                                    }
+                                  }}
+                                />
+                                <span className="show-genre-tag">{evt.genre}</span>
+                              </div>
+                            )}
+                            <div className="show-details">
+                              <span className="show-city-tag">{evt.city} - {evt.state}</span>
+                              <h3 className="show-title">{evt.title}</h3>
+                              <p className="show-venue">📍 {evt.venue}</p>
+                              <div className="show-footer">
+                                <span className="show-time">🕒 {evt.timeLabel}</span>
+                                <a
+                                  href={evt.ticketUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="show-ticket-btn"
+                                >
+                                  <span>Ingressos</span>
+                                  <ActionIcon name="external" />
+                                </a>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <strong>Nenhum show encontrado</strong>
+                      <p>Clique no botão de localização acima para escolher outra capital ou cidade brasileira.</p>
+                    </div>
+                  )}
+                </div>
+              )}
               {panel === "recent" && <div className="recent-content">
                 <div className="content-heading">
                   <div>
@@ -2131,6 +2424,76 @@ export default function App() {
 
         <footer><span>Rádio Marinha Online</span><span>{track.updatedAt ? `Atualizado às ${new Date(track.updatedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "Conectando à programação"}</span></footer>
       </section>
+
+      {/* Modal de Escolha de Cidade para Shows */}
+      {cityPickerOpen && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCityPickerOpen(false); }}>
+          <section className="modal-card city-picker-modal" role="dialog" aria-modal="true" aria-labelledby="city-modal-title">
+            <header className="modal-header">
+              <div className="modal-title">
+                <span className="action-icon-wrap"><ActionIcon name="location" /></span>
+                <div>
+                  <small>AGENDA DE SHOWS</small>
+                  <h2 id="city-modal-title">Escolha sua Cidade</h2>
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setCityPickerOpen(false)} aria-label="Fechar modal">×</button>
+            </header>
+
+            <div className="city-picker-content">
+              <div className="city-search-box">
+                <input
+                  type="text"
+                  className="city-search-input"
+                  placeholder="Pesquisar cidade ou capital..."
+                  value={citySearchInput}
+                  onChange={(e) => setCitySearchInput(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <p className="city-group-title">Capitais Principais</p>
+              <div className="city-chips-grid">
+                {BRAZILIAN_CAPITALS
+                  .filter((c) => !citySearchInput || c.name.toLowerCase().includes(citySearchInput.toLowerCase()) || c.state.toLowerCase().includes(citySearchInput.toLowerCase()))
+                  .map((cap) => (
+                    <button
+                      key={cap.name}
+                      className={`city-chip ${selectedCity === cap.name ? "active" : ""}`}
+                      onClick={() => {
+                        setSelectedCity(cap.name);
+                        loadEventsForCity(cap.name);
+                        setCityPickerOpen(false);
+                        setCitySearchInput("");
+                      }}
+                    >
+                      <span className="city-chip-name">{cap.name}</span>
+                      <span className="city-chip-uf">{cap.state}</span>
+                    </button>
+                  ))}
+              </div>
+
+              {citySearchInput.trim() && (
+                <button
+                  className="city-custom-search-btn"
+                  onClick={() => {
+                    const custom = citySearchInput.trim();
+                    if (custom) {
+                      setSelectedCity(custom);
+                      loadEventsForCity(custom);
+                      setCityPickerOpen(false);
+                      setCitySearchInput("");
+                    }
+                  }}
+                >
+                  <span>Buscar shows em "<strong>{citySearchInput.trim()}</strong>"</span>
+                  <ActionIcon name="next" />
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {modal && <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
         <section className={`modal-card ${modal === "schedule" ? "schedule-modal" : "contact-modal"}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">

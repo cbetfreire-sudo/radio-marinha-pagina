@@ -1196,6 +1196,628 @@ app.get('/api/cover-proxy', async (req, res) => {
     }
 });
 
+// ── Notícias Musicais (RSS Aggregator) ────────────────────────
+let cachedMusicNews = null;
+let lastNewsFetchTime = 0;
+const NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos
+
+function decodeHtmlEntities(str = '') {
+    return str
+        .replace(/&#8216;|&#8217;|&lsquo;|&rsquo;/g, "'")
+        .replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"')
+        .replace(/&#8211;|&#8212;|&ndash;|&mdash;/g, '—')
+        .replace(/&#8230;|&hellip;/g, '...')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&#([0-9]{1,5});/gi, (match, numStr) => {
+            const num = parseInt(numStr, 10);
+            return String.fromCharCode(num);
+        })
+        .replace(/<[^>]*>/g, '')
+        .trim();
+}
+
+async function fetchMusicNews() {
+    const now = Date.now();
+    if (cachedMusicNews && (now - lastNewsFetchTime) < NEWS_CACHE_TTL_MS) {
+        return cachedMusicNews;
+    }
+
+    const feeds = [
+        {
+            source: 'Rolling Stone Brasil',
+            badge: 'Rolling Stone',
+            tagColor: '#e11d48',
+            url: 'https://rollingstone.com.br/feed/'
+        },
+        {
+            source: 'Billboard Brasil',
+            badge: 'Billboard',
+            tagColor: '#0284c7',
+            url: 'https://billboard.com.br/feed/'
+        },
+        {
+            source: 'Tenho Mais Discos Que Amigos!',
+            badge: 'TMDQA!',
+            tagColor: '#2563eb',
+            url: 'https://www.tenhomaisdiscosqueamigos.com/feed/'
+        },
+        {
+            source: 'G1 Música',
+            badge: 'G1 Música',
+            tagColor: '#ea580c',
+            url: 'https://g1.globo.com/rss/g1/musica/'
+        }
+    ];
+
+    const results = [];
+
+    await Promise.allSettled(feeds.map(async (feed) => {
+        try {
+            const res = await fetchWithTimeout(feed.url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+            }, 6000);
+            if (!res.ok) return;
+
+            const xml = await res.text();
+            const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
+            let match;
+            let count = 0;
+
+            while ((match = itemRegex.exec(xml)) !== null && count < 10) {
+                const itemXml = match[1];
+
+                const titleMatch = itemXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+                const linkMatch = itemXml.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i);
+                const pubDateMatch = itemXml.match(/<pubDate>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/pubDate>/i);
+                const descMatch = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i);
+
+                let img = null;
+                const mediaContentMatch = itemXml.match(/<media:content[^>]*url=["']([^"']+)["']/i);
+                const enclosureMatch = itemXml.match(/<enclosure[^>]*url=["']([^"']+)["']/i);
+                const imgTagMatch = itemXml.match(/<img[^>]*src=["']([^"']+)["']/i);
+
+                if (mediaContentMatch) img = mediaContentMatch[1];
+                else if (enclosureMatch) img = enclosureMatch[1];
+                else if (imgTagMatch) img = imgTagMatch[1];
+
+                // Ignora embeds de vídeo do youtube como imagem
+                if (img && (img.includes('youtube.com') || img.includes('youtu.be'))) {
+                    img = null;
+                }
+
+                const rawTitle = titleMatch ? titleMatch[1] : '';
+                const rawDesc = descMatch ? descMatch[1] : '';
+                const link = linkMatch ? linkMatch[1].trim() : '#';
+                const pubDate = pubDateMatch ? new Date(pubDateMatch[1].trim()) : new Date();
+
+                const cleanTitle = decodeHtmlEntities(rawTitle);
+                const cleanDesc = decodeHtmlEntities(rawDesc).slice(0, 180);
+
+                if (cleanTitle && cleanTitle.length > 5) {
+                    results.push({
+                        id: `${feed.badge}-${count}-${pubDate.getTime()}`,
+                        title: cleanTitle,
+                        summary: cleanDesc ? (cleanDesc.length >= 180 ? `${cleanDesc}...` : cleanDesc) : 'Clique para conferir a matéria completa.',
+                        link,
+                        image: img || null,
+                        source: feed.source,
+                        badge: feed.badge,
+                        tagColor: feed.tagColor,
+                        pubDate: !isNaN(pubDate.getTime()) ? pubDate.toISOString() : new Date().toISOString(),
+                        timestamp: !isNaN(pubDate.getTime()) ? pubDate.getTime() : Date.now()
+                    });
+                    count++;
+                }
+            }
+        } catch (e) {
+            console.error(`[NEWS FEED ERROR] ${feed.source}:`, e.message);
+        }
+    }));
+
+    // Ordena da mais recente para a mais antiga
+    results.sort((a, b) => b.timestamp - a.timestamp);
+
+    if (results.length > 0) {
+        cachedMusicNews = results;
+        lastNewsFetchTime = now;
+    }
+
+    return cachedMusicNews || [];
+}
+
+app.get('/api/news', async (_req, res) => {
+    try {
+        const news = await fetchMusicNews();
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        res.json({ success: true, count: news.length, news });
+    } catch (error) {
+        console.error('[API NEWS ERROR]:', error.message);
+        res.status(500).json({ success: false, news: [] });
+    }
+});
+
+// ── Geolocalização do Usuário ────────────────────────────────
+app.get('/api/location', async (req, res) => {
+    try {
+        let clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+                       req.headers['cf-connecting-ip'] ||
+                       req.socket.remoteAddress || '';
+
+        if (clientIp.startsWith('::ffff:')) {
+            clientIp = clientIp.substring(7);
+        }
+
+        const isLocal = !clientIp || clientIp === '127.0.0.1' || clientIp === '::1' || clientIp.startsWith('192.168.') || clientIp.startsWith('10.');
+
+        if (isLocal) {
+            return res.json({
+                city: 'Brasília',
+                state: 'DF',
+                region: 'Distrito Federal',
+                country: 'Brasil',
+                isDefault: true
+            });
+        }
+
+        const geoRes = await fetchWithTimeout(`http://ip-api.com/json/${clientIp}?fields=status,city,region,regionName,country`, {}, 3500);
+        if (geoRes.ok) {
+            const data = await geoRes.json();
+            if (data.status === 'success' && data.city) {
+                return res.json({
+                    city: data.city,
+                    state: data.region || 'DF',
+                    region: data.regionName || data.city,
+                    country: data.country || 'Brasil',
+                    isDefault: false
+                });
+            }
+        }
+
+        res.json({
+            city: 'Brasília',
+            state: 'DF',
+            region: 'Distrito Federal',
+            country: 'Brasil',
+            isDefault: true
+        });
+    } catch (error) {
+        res.json({
+            city: 'Brasília',
+            state: 'DF',
+            region: 'Distrito Federal',
+            country: 'Brasil',
+            isDefault: true
+        });
+    }
+});
+
+// ── Agenda de Próximos Shows no Brasil ───────────────────────
+const BRAZIL_CONCERT_SCHEDULE = [
+    // Brasília - DF
+    {
+        id: 'bsb-1',
+        city: 'Brasília',
+        state: 'DF',
+        artist: 'Gilberto Gil — Turnê Tempo Rei',
+        title: 'Gilberto Gil: A Última Grande Turnê',
+        date: '2025-05-31T21:00:00.000Z',
+        dateLabel: '31 Mai 2025',
+        timeLabel: '21:00',
+        venue: 'Arena BRB Mané Garrincha',
+        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB / Ensaio',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+    {
+        id: 'bsb-2',
+        city: 'Brasília',
+        state: 'DF',
+        artist: 'Liniker — Caju Tour',
+        title: 'Liniker: Turnê do Álbum CAJU',
+        date: '2025-04-12T20:30:00.000Z',
+        dateLabel: '12 Abr 2025',
+        timeLabel: '20:30',
+        venue: 'Centro de Convenções Ulysses Guimarães',
+        image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+        genre: 'Soul / MPB',
+        ticketUrl: 'https://www.sympla.com.br'
+    },
+    {
+        id: 'bsb-3',
+        city: 'Brasília',
+        state: 'DF',
+        artist: 'Festival Na Praia 2025',
+        title: 'Festival Na Praia Brasília — Edição Especial',
+        date: '2025-07-05T18:00:00.000Z',
+        dateLabel: '05 Jul a 14 Set 2025',
+        timeLabel: '18:00',
+        venue: 'Setor de Clubes Esportivos Sul',
+        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
+        genre: 'Festival / Pop / MPB',
+        ticketUrl: 'https://r2.com.br/napraia'
+    },
+    {
+        id: 'bsb-4',
+        city: 'Brasília',
+        state: 'DF',
+        artist: 'Nando Reis & Os Infernais',
+        title: 'Nando Reis: Uma Estrela Misteriosa',
+        date: '2025-06-21T21:30:00.000Z',
+        dateLabel: '21 Jun 2025',
+        timeLabel: '21:30',
+        venue: 'Auditório Master — Ulysses Guimarães',
+        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
+        genre: 'Pop Rock',
+        ticketUrl: 'https://www.bilheteriadigital.com'
+    },
+    {
+        id: 'bsb-5',
+        city: 'Brasília',
+        state: 'DF',
+        artist: 'Capital Inicial — 40 Anos',
+        title: 'Capital Inicial: Acústico Especial em Casa',
+        date: '2025-08-16T22:00:00.000Z',
+        dateLabel: '16 Ago 2025',
+        timeLabel: '22:00',
+        venue: 'Arena BRB Nilson Nelson',
+        image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
+        genre: 'Rock Nacional',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+
+    // Rio de Janeiro - RJ
+    {
+        id: 'rj-1',
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        artist: 'Caetano Veloso & Maria Bethânia',
+        title: 'Caetano & Bethânia — Turnê Histórica',
+        date: '2025-03-22T21:00:00.000Z',
+        dateLabel: '22 Mar 2025',
+        timeLabel: '21:00',
+        venue: 'Farmasi Arena — Barra da Tijuca',
+        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB',
+        ticketUrl: 'https://www.ticketmaster.com.br'
+    },
+    {
+        id: 'rj-2',
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        artist: 'Djavan — Turnê D',
+        title: 'Djavan ao Vivo no Rio',
+        date: '2025-05-17T21:30:00.000Z',
+        dateLabel: '17 Mai 2025',
+        timeLabel: '21:30',
+        venue: 'Vivo Rio — Aterro do Flamengo',
+        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB / Jazz',
+        ticketUrl: 'https://www.vivorio.com.br'
+    },
+    {
+        id: 'rj-3',
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        artist: 'Zeca Pagodinho — 40 Anos de Samba',
+        title: 'Zeca Pagodinho no Circo Voador',
+        date: '2025-06-07T22:00:00.000Z',
+        dateLabel: '07 Jun 2025',
+        timeLabel: '22:00',
+        venue: 'Circo Voador — Lapa',
+        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+        genre: 'Samba',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+    {
+        id: 'rj-4',
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        artist: 'Marisa Monte — Portas Tour',
+        title: 'Marisa Monte no Qualistage',
+        date: '2025-07-19T21:00:00.000Z',
+        dateLabel: '19 Jul 2025',
+        timeLabel: '21:00',
+        venue: 'Qualistage — Via Parque',
+        image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB',
+        ticketUrl: 'https://www.ticketmaster.com.br'
+    },
+
+    // São Paulo - SP
+    {
+        id: 'sp-1',
+        city: 'São Paulo',
+        state: 'SP',
+        artist: 'Lollapalooza Brasil 2025',
+        title: 'Lollapalooza Brasil 2025',
+        date: '2025-03-28T12:00:00.000Z',
+        dateLabel: '28 a 30 Mar 2025',
+        timeLabel: '12:00',
+        venue: 'Autódromo de Interlagos',
+        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
+        genre: 'Festival Internacional / Rock / Pop',
+        ticketUrl: 'https://www.ticketmaster.com.br'
+    },
+    {
+        id: 'sp-2',
+        city: 'São Paulo',
+        state: 'SP',
+        artist: 'Gilberto Gil — Turnê Tempo Rei',
+        title: 'Gilberto Gil em São Paulo',
+        date: '2025-04-26T20:30:00.000Z',
+        dateLabel: '26 Abr 2025',
+        timeLabel: '20:30',
+        venue: 'Allianz Parque',
+        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+    {
+        id: 'sp-3',
+        city: 'São Paulo',
+        state: 'SP',
+        artist: 'Sepultura — Celebrating Life Through Death',
+        title: 'Sepultura: Turnê de Despedida Mundial',
+        date: '2025-09-06T21:00:00.000Z',
+        dateLabel: '06 Set 2025',
+        timeLabel: '21:00',
+        venue: 'Espaço Unimed — Barra Funda',
+        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
+        genre: 'Heavy Metal',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+    {
+        id: 'sp-4',
+        city: 'São Paulo',
+        state: 'SP',
+        artist: 'Jão — Superturnê',
+        title: 'Jão: A Grande Superturnê',
+        date: '2025-05-10T21:00:00.000Z',
+        dateLabel: '10 Mai 2025',
+        timeLabel: '21:00',
+        venue: 'Allianz Parque',
+        image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
+        genre: 'Pop Nacional',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+
+    // Salvador - BA
+    {
+        id: 'ssa-1',
+        city: 'Salvador',
+        state: 'BA',
+        artist: 'Gilberto Gil — Turnê Tempo Rei',
+        title: 'Gilberto Gil: Abertura Oficial Tempo Rei em Salvador',
+        date: '2025-03-15T19:00:00.000Z',
+        dateLabel: '15 Mar 2025',
+        timeLabel: '19:00',
+        venue: 'Casa de Apostas Arena Fonte Nova',
+        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB / Axé',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+    {
+        id: 'ssa-2',
+        city: 'Salvador',
+        state: 'BA',
+        artist: 'BaianaSystem — Navio Pirata',
+        title: 'BaianaSystem: O Baile Especial',
+        date: '2025-04-19T21:00:00.000Z',
+        dateLabel: '19 Abr 2025',
+        timeLabel: '21:00',
+        venue: 'Concha Acústica do TCA',
+        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
+        genre: 'Sound System / Afro-Rock',
+        ticketUrl: 'https://www.sympla.com.br'
+    },
+    {
+        id: 'ssa-3',
+        city: 'Salvador',
+        state: 'BA',
+        artist: 'Maria Rita — Samba da Maria',
+        title: 'Maria Rita: Samba da Maria em Salvador',
+        date: '2025-06-14T20:00:00.000Z',
+        dateLabel: '14 Jun 2025',
+        timeLabel: '20:00',
+        venue: 'Concha Acústica do Teatro Castro Alves',
+        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+        genre: 'Samba / MPB',
+        ticketUrl: 'https://www.sympla.com.br'
+    },
+
+    // Belo Horizonte - MG
+    {
+        id: 'bh-1',
+        city: 'Belo Horizonte',
+        state: 'MG',
+        artist: 'Milton Nascimento & Esperanza Spalding',
+        title: 'Milton + Esperanza — Encontro Único',
+        date: '2025-05-24T21:00:00.000Z',
+        dateLabel: '24 Mai 2025',
+        timeLabel: '21:00',
+        venue: 'Arena Hall (Antigo Chevrolet Hall)',
+        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+        genre: 'Clube da Esquina / Jazz',
+        ticketUrl: 'https://www.sympla.com.br'
+    },
+    {
+        id: 'bh-2',
+        city: 'Belo Horizonte',
+        state: 'MG',
+        artist: 'Skank — Encontros Acústicos com Samuel Rosa',
+        title: 'Samuel Rosa: Tour Solo e Clássicos do Skank',
+        date: '2025-07-12T21:30:00.000Z',
+        dateLabel: '12 Jul 2025',
+        timeLabel: '21:30',
+        venue: 'Palácio das Artes',
+        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
+        genre: 'Pop Rock',
+        ticketUrl: 'https://www.eventim.com.br'
+    },
+
+    // Curitiba - PR
+    {
+        id: 'cwb-1',
+        city: 'Curitiba',
+        state: 'PR',
+        artist: 'Caetano Veloso & Maria Bethânia',
+        title: 'Caetano & Bethânia na Pedreira',
+        date: '2025-04-05T20:00:00.000Z',
+        dateLabel: '05 Abr 2025',
+        timeLabel: '20:00',
+        venue: 'Pedreira Paulo Leminski',
+        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB',
+        ticketUrl: 'https://www.ticketmaster.com.br'
+    },
+    {
+        id: 'cwb-2',
+        city: 'Curitiba',
+        state: 'PR',
+        artist: 'Festival Prime Rock Brasil Curitiba',
+        title: 'Prime Rock Brasil: Os Clássicos do Rock Nacional',
+        date: '2025-11-22T14:00:00.000Z',
+        dateLabel: '22 Nov 2025',
+        timeLabel: '14:00',
+        venue: 'Pedreira Paulo Leminski',
+        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
+        genre: 'Rock Brasil',
+        ticketUrl: 'https://www.blueticket.com.br'
+    },
+
+    // Recife - PE
+    {
+        id: 'rec-1',
+        city: 'Recife',
+        state: 'PE',
+        artist: 'Alceu Valença & Orquestra Ouro Preto',
+        title: 'Alceu Valença: Valencianas II',
+        date: '2025-06-28T21:00:00.000Z',
+        dateLabel: '28 Jun 2025',
+        timeLabel: '21:00',
+        venue: 'Classic Hall — Olinda/Recife',
+        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+        genre: 'Frevo / MPB / Sinfônica',
+        ticketUrl: 'https://www.bilheteriadigital.com'
+    },
+    {
+        id: 'rec-2',
+        city: 'Recife',
+        state: 'PE',
+        artist: 'Lenine — Turnê Rizoma',
+        title: 'Lenine & Bruno Giorgi em Recife',
+        date: '2025-05-03T20:30:00.000Z',
+        dateLabel: '03 Mai 2025',
+        timeLabel: '20:30',
+        venue: 'Teatro Guararapes',
+        image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB / Rock',
+        ticketUrl: 'https://www.sympla.com.br'
+    },
+
+    // Porto Alegre - RS
+    {
+        id: 'poa-1',
+        city: 'Porto Alegre',
+        state: 'RS',
+        artist: 'Humberto Gessinger — Quatro Cantos de um Mundo Redondo',
+        title: 'Humberto Gessinger ao Vivo em Porto Alegre',
+        date: '2025-05-10T21:00:00.000Z',
+        dateLabel: '10 Mai 2025',
+        timeLabel: '21:00',
+        venue: 'Auditório Araújo Vianna',
+        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
+        genre: 'Rock Gaúcho / MPB',
+        ticketUrl: 'https://www.sympla.com.br'
+    },
+    {
+        id: 'poa-2',
+        city: 'Porto Alegre',
+        state: 'RS',
+        artist: 'Ney Matogrosso — Bloco na Rua',
+        title: 'Ney Matogrosso: Turnê Bloco na Rua',
+        date: '2025-08-09T21:00:00.000Z',
+        dateLabel: '09 Ago 2025',
+        timeLabel: '21:00',
+        venue: 'Teatro do Bourbon Country',
+        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB / Performance',
+        ticketUrl: 'https://www.uhuu.com'
+    },
+
+    // Fortaleza - CE
+    {
+        id: 'for-1',
+        city: 'Fortaleza',
+        state: 'CE',
+        artist: 'Fagner — 50 Anos de Música',
+        title: 'Raimundo Fagner em Fortaleza',
+        date: '2025-06-20T21:00:00.000Z',
+        dateLabel: '20 Jun 2025',
+        timeLabel: '21:00',
+        venue: 'Centro de Eventos do Ceará',
+        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+        genre: 'MPB / Nordestina',
+        ticketUrl: 'https://www.bilheteriavirtual.com.br'
+    },
+
+    // Manaus - AM
+    {
+        id: 'mao-1',
+        city: 'Manaus',
+        state: 'AM',
+        artist: 'Festival Amazonas de Ópera & Música Brasileira',
+        title: 'Grande Concerto da Floresta',
+        date: '2025-05-18T19:00:00.000Z',
+        dateLabel: '18 Mai 2025',
+        timeLabel: '19:00',
+        venue: 'Teatro Amazonas',
+        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
+        genre: 'Erudita / MPB',
+        ticketUrl: 'https://www.shopingressos.com.br'
+    }
+];
+
+function normalizeSearchStr(str = '') {
+    return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+}
+
+app.get('/api/events', (req, res) => {
+    const requestedCity = String(req.query.city || '').trim();
+    const normReqCity = normalizeSearchStr(requestedCity);
+
+    let filtered = [];
+
+    if (normReqCity) {
+        filtered = BRAZIL_CONCERT_SCHEDULE.filter(evt => {
+            const normEvtCity = normalizeSearchStr(evt.city);
+            const normEvtState = normalizeSearchStr(evt.state);
+            return normEvtCity.includes(normReqCity) || normReqCity.includes(normEvtCity) || normEvtState === normReqCity;
+        });
+    }
+
+    // Se a cidade não tiver shows cadastrados, retorna os principais destaques nacionais
+    const isFallback = filtered.length === 0;
+    const finalEvents = isFallback ? BRAZIL_CONCERT_SCHEDULE.slice(0, 8) : filtered;
+
+    res.json({
+        success: true,
+        city: requestedCity || 'Destaques Nacionais',
+        isFallback,
+        count: finalEvents.length,
+        events: finalEvents
+    });
+});
+
 async function startServer() {
     if (IS_PRODUCTION) {
         app.use(express.static(DIST_DIR));
