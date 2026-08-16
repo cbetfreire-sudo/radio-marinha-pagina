@@ -1550,7 +1550,7 @@ app.get('/api/events', (req, res) => {
             badge: 'Mega Shows Internacionais',
             description: `Grandes concertos, megafestivais e turnês mundiais no Brasil`,
             color: '#026CDF',
-            url: `https://www.google.com/search?q=${encodeURIComponent('site:ticketmaster.com.br ' + requestedCity + ' ingressos show')}`
+            url: 'https://www.ticketmaster.com.br/'
         },
         {
             id: 'ingresse',

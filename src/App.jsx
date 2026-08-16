@@ -2317,16 +2317,6 @@ export default function App() {
                           </p>
                           <div className="artist-tour-actions">
                             <a
-                              href={`https://www.google.com/search?q=${encodeURIComponent('ingressos show turne ' + track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="tour-btn tour-google"
-                              title="Buscar todas as vendas oficiais de ingressos no Brasil"
-                            >
-                              <span>Buscar Ingressos</span>
-                              <ActionIcon name="external" />
-                            </a>
-                            <a
                               href={`https://www.sympla.com.br/eventos?s=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
                               target="_blank"
                               rel="noopener noreferrer"
@@ -2345,12 +2335,12 @@ export default function App() {
                               <ActionIcon name="external" />
                             </a>
                             <a
-                              href={`https://www.google.com/search?q=${encodeURIComponent('site:ticketmaster.com.br ' + track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
+                              href={`https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="tour-btn tour-tm"
+                              className="tour-btn tour-bd"
                             >
-                              <span>Ticketmaster</span>
+                              <span>Bilheteria Digital</span>
                               <ActionIcon name="external" />
                             </a>
                           </div>
