@@ -1292,6 +1292,7 @@ async function fetchMusicNews() {
             const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
             let match;
             let count = 0;
+            const rawItems = [];
 
             while ((match = itemRegex.exec(xml)) !== null && count < 10) {
                 const itemXml = match[1];
@@ -1329,21 +1330,14 @@ async function fetchMusicNews() {
                     continue;
                 }
 
-                let cleanTitle = decodeHtmlEntities(rawTitle);
-                let cleanDesc = decodeHtmlEntities(rawDesc).slice(0, 180);
-
-                if (feed.translate) {
-                    cleanTitle = await translateToPortuguese(cleanTitle);
-                    if (cleanDesc) {
-                        cleanDesc = await translateToPortuguese(cleanDesc);
-                    }
-                }
+                const cleanTitle = decodeHtmlEntities(rawTitle);
+                const cleanDesc = decodeHtmlEntities(rawDesc).slice(0, 180);
 
                 if (cleanTitle && cleanTitle.length > 5) {
-                    results.push({
+                    rawItems.push({
                         id: `${feed.badge}-${count}-${pubTime}`,
                         title: cleanTitle,
-                        summary: cleanDesc ? (cleanDesc.length >= 180 ? `${cleanDesc}...` : cleanDesc) : 'Clique para conferir a matéria completa.',
+                        desc: cleanDesc,
                         link,
                         image: img || null,
                         source: feed.source,
@@ -1353,6 +1347,41 @@ async function fetchMusicNews() {
                         timestamp: pubTime
                     });
                     count++;
+                }
+            }
+
+            if (feed.translate && rawItems.length > 0) {
+                const translatedItems = await Promise.all(rawItems.map(async (it) => {
+                    const tTitle = await translateToPortuguese(it.title);
+                    const tDesc = it.desc ? await translateToPortuguese(it.desc) : '';
+                    return {
+                        id: it.id,
+                        title: tTitle || it.title,
+                        summary: tDesc ? (tDesc.length >= 180 ? `${tDesc}...` : tDesc) : 'Clique para conferir a matéria completa.',
+                        link: it.link,
+                        image: it.image,
+                        source: it.source,
+                        badge: it.badge,
+                        tagColor: it.tagColor,
+                        pubDate: it.pubDate,
+                        timestamp: it.timestamp
+                    };
+                }));
+                results.push(...translatedItems);
+            } else {
+                for (const it of rawItems) {
+                    results.push({
+                        id: it.id,
+                        title: it.title,
+                        summary: it.desc ? (it.desc.length >= 180 ? `${it.desc}...` : it.desc) : 'Clique para conferir a matéria completa.',
+                        link: it.link,
+                        image: it.image,
+                        source: it.source,
+                        badge: it.badge,
+                        tagColor: it.tagColor,
+                        pubDate: it.pubDate,
+                        timestamp: it.timestamp
+                    });
                 }
             }
         } catch (e) {
