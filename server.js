@@ -161,10 +161,12 @@ function resolveTrackFields(current) {
     return { artist: '', title };
 }
 
-function isStationIdentifier(artist, title) {
-    const titleMetadata = normalizeMetadata(title);
-    if (!titleMetadata || titleMetadata.length < 3) return true;
-    return STATION_IDENTIFIERS.some((identifier) => titleMetadata.includes(identifier));
+function isStationIdentifier(artist = '', title = '') {
+    const artistMeta = normalizeMetadata(artist);
+    const titleMeta = normalizeMetadata(title);
+    if (!artistMeta && !titleMeta) return true;
+    const combined = `${artistMeta} ${titleMeta}`.trim();
+    return STATION_IDENTIFIERS.some((identifier) => combined.includes(identifier));
 }
 
 function getLevenshteinDistance(a, b) {
@@ -781,8 +783,25 @@ function getArtistSearchVariants(rawName) {
     if (!cleaned) return [];
 
     const variants = new Set();
-    const titleCased = toTitleCase(cleaned);
 
+    // 1. Artista principal prioritário se houver feat / ft / participação
+    const primaryOnly = cleaned
+        .replace(/\s+(?:feat\.?|ft\.?|featuring|part\.?|participação)\s+.+$/i, '')
+        .trim();
+
+    if (primaryOnly) {
+        const pTitle = toTitleCase(primaryOnly);
+        variants.add(pTitle);
+        variants.add(primaryOnly);
+        variants.add(`${pTitle} (banda)`);
+        variants.add(`${pTitle} (cantor)`);
+        variants.add(`${pTitle} (cantora)`);
+        variants.add(`${pTitle} (músico)`);
+        variants.add(`${pTitle} (dupla)`);
+        variants.add(`${pTitle} (grupo musical)`);
+    }
+
+    const titleCased = toTitleCase(cleaned);
     variants.add(titleCased);
     variants.add(cleaned);
 
@@ -793,18 +812,6 @@ function getArtistSearchVariants(rawName) {
     variants.add(`${titleCased} (cantora)`);
     variants.add(`${titleCased} (músico)`);
     variants.add(`${titleCased} (dupla)`);
-
-    // Remove feat / ft / participacao / &
-    const primaryOnly = cleaned
-        .replace(/\s+(?:feat\.?|ft\.?|featuring|part\.?|participação)\s+.+$/i, '')
-        .trim();
-    if (primaryOnly && primaryOnly !== cleaned) {
-        const pTitle = toTitleCase(primaryOnly);
-        variants.add(pTitle);
-        variants.add(`${pTitle} (banda)`);
-        variants.add(`${pTitle} (cantor)`);
-        variants.add(primaryOnly);
-    }
 
     // Primeira parte se for dupla/banda com " e ", "&", "/", ","
     const firstOfDuo = primaryOnly.split(/\s+(?:e|&|\/|,)\s+/i)[0]?.trim();
