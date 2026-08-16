@@ -1225,6 +1225,23 @@ function decodeHtmlEntities(str = '') {
         .trim();
 }
 
+async function translateToPortuguese(text = '') {
+    if (!text || text.trim().length === 0) return text;
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=pt&dt=t&q=${encodeURIComponent(text)}`;
+        const res = await fetchWithTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 3000);
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data[0]) {
+                return data[0].map(item => item[0]).join('');
+            }
+        }
+    } catch {
+        // Retorna o texto original em caso de falha de conexão
+    }
+    return text;
+}
+
 async function fetchMusicNews() {
     const now = Date.now();
     if (cachedMusicNews && (now - lastNewsFetchTime) < NEWS_CACHE_TTL_MS) {
@@ -1236,25 +1253,29 @@ async function fetchMusicNews() {
             source: 'Rolling Stone Brasil',
             badge: 'Rolling Stone',
             tagColor: '#e11d48',
-            url: 'https://rollingstone.com.br/feed/'
+            url: 'https://rollingstone.com.br/feed/',
+            translate: false
         },
         {
             source: 'POPline',
             badge: 'POPline',
             tagColor: '#ec4899',
-            url: 'https://portalpopline.com.br/feed/'
+            url: 'https://portalpopline.com.br/feed/',
+            translate: false
         },
         {
             source: 'Billboard',
             badge: 'Billboard',
             tagColor: '#0284c7',
-            url: 'https://www.billboard.com/feed/'
+            url: 'https://www.billboard.com/feed/',
+            translate: true
         },
         {
             source: 'G1 Música',
             badge: 'G1 Música',
             tagColor: '#ea580c',
-            url: 'https://g1.globo.com/rss/g1/pop-arte/musica/'
+            url: 'https://g1.globo.com/rss/g1/pop-arte/musica/',
+            translate: false
         }
     ];
 
@@ -1282,10 +1303,12 @@ async function fetchMusicNews() {
 
                 let img = null;
                 const mediaContentMatch = itemXml.match(/<media:content[^>]*url=["']([^"']+)["']/i);
+                const mediaThumbMatch = itemXml.match(/<media:thumbnail[^>]*url=["']([^"']+)["']/i);
                 const enclosureMatch = itemXml.match(/<enclosure[^>]*url=["']([^"']+)["']/i);
                 const imgTagMatch = itemXml.match(/<img[^>]*src=["']([^"']+)["']/i);
 
                 if (mediaContentMatch) img = mediaContentMatch[1];
+                else if (mediaThumbMatch) img = mediaThumbMatch[1];
                 else if (enclosureMatch) img = enclosureMatch[1];
                 else if (imgTagMatch) img = imgTagMatch[1];
 
@@ -1306,8 +1329,15 @@ async function fetchMusicNews() {
                     continue;
                 }
 
-                const cleanTitle = decodeHtmlEntities(rawTitle);
-                const cleanDesc = decodeHtmlEntities(rawDesc).slice(0, 180);
+                let cleanTitle = decodeHtmlEntities(rawTitle);
+                let cleanDesc = decodeHtmlEntities(rawDesc).slice(0, 180);
+
+                if (feed.translate) {
+                    cleanTitle = await translateToPortuguese(cleanTitle);
+                    if (cleanDesc) {
+                        cleanDesc = await translateToPortuguese(cleanDesc);
+                    }
+                }
 
                 if (cleanTitle && cleanTitle.length > 5) {
                     results.push({
