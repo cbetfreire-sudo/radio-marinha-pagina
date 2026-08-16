@@ -2275,15 +2275,15 @@ export default function App() {
                 <div className="shows-content">
                   <div className="content-heading shows-heading">
                     <div>
-                      <p className="section-kicker">GUIA OFICIAL DE INGRESSOS</p>
-                      <h2>Shows na sua Cidade</h2>
+                      <p className="section-kicker">NAVEGAÇÃO CULTURAL • GUIA OFICIAL DE INGRESSOS</p>
+                      <h2>Shows & Festivais</h2>
                     </div>
 
                     <button
                       className="shows-city-selector-btn"
                       onClick={() => setCityPickerOpen(true)}
                       aria-label="Mudar cidade"
-                      title="Clique para escolher outra cidade"
+                      title="Clique para escolher outra cidade no mapa náutico"
                     >
                       <ActionIcon name="location" />
                       <span className="shows-city-name">{selectedCity} - {cityState}</span>
@@ -2291,29 +2291,67 @@ export default function App() {
                     </button>
                   </div>
 
+                  <div className="shows-quick-cities-bar" role="group" aria-label="Cidades rápidas">
+                    {[
+                      { city: "Brasília", uf: "DF" },
+                      { city: "Rio de Janeiro", uf: "RJ" },
+                      { city: "São Paulo", uf: "SP" },
+                      { city: "Salvador", uf: "BA" },
+                      { city: "Belo Horizonte", uf: "MG" },
+                      { city: "Recife", uf: "PE" },
+                      { city: "Curitiba", uf: "PR" }
+                    ].map((item) => (
+                      <button
+                        key={item.city}
+                        className={`quick-city-chip ${selectedCity.toLowerCase() === item.city.toLowerCase() ? "active" : ""}`}
+                        onClick={() => {
+                          setSelectedCity(item.city);
+                          setCityState(item.uf);
+                          localStorage.setItem('radio_user_city', item.city);
+                          localStorage.setItem('radio_user_state', item.uf);
+                        }}
+                      >
+                        {item.city}
+                      </button>
+                    ))}
+                    <button
+                      className="quick-city-chip quick-city-more"
+                      onClick={() => setCityPickerOpen(true)}
+                    >
+                      + Mais Cidades
+                    </button>
+                  </div>
+
                   {track.artist && track.artist !== "Rádio Marinha" && (
                     <div className="artist-tour-card">
                       <div className="artist-tour-inner">
-                        <div className="artist-tour-media">
-                          <img
-                            src={effectiveCover}
-                            alt={track.artist}
-                            className="artist-tour-thumb"
-                            onError={(e) => {
-                              if (e.target) e.target.src = FALLBACK_COVER;
-                            }}
-                          />
+                        <div className="artist-tour-media-wrap">
+                          <div className="artist-tour-media">
+                            <img
+                              src={effectiveCover}
+                              alt={track.artist}
+                              className="artist-tour-thumb"
+                              onError={(e) => {
+                                if (e.target) e.target.src = FALLBACK_COVER;
+                              }}
+                            />
+                          </div>
+                          <div className="artist-tour-vinyl-disk" />
                         </div>
                         <div className="artist-tour-content">
                           <div className="artist-tour-live-pill">
-                            <span className="live-indicator-dot" />
+                            <div className="equalizer-bars">
+                              <span className="bar bar-1" />
+                              <span className="bar bar-2" />
+                              <span className="bar bar-3" />
+                            </div>
                             <span>NO AR NA RÁDIO</span>
                           </div>
                           <h3 className="artist-tour-title">
                             Turnê de <b>{track.artist}</b>
                           </h3>
                           <p className="artist-tour-desc">
-                            Encontre ingressos oficiais e datas de shows em qualquer plataforma:
+                            Pesquise ingressos e datas confirmadas nas bilheterias oficiais:
                           </p>
                           <div className="artist-tour-actions">
                             <a
@@ -2322,7 +2360,8 @@ export default function App() {
                               rel="noopener noreferrer"
                               className="tour-btn tour-sympla"
                             >
-                              <span>Sympla</span>
+                              <span className="tour-btn-icon">🎟️</span>
+                              <span>Ingressos no Sympla</span>
                               <ActionIcon name="external" />
                             </a>
                             <a
@@ -2331,7 +2370,8 @@ export default function App() {
                               rel="noopener noreferrer"
                               className="tour-btn tour-eventim"
                             >
-                              <span>Eventim</span>
+                              <span className="tour-btn-icon">🎫</span>
+                              <span>Ingressos na Eventim</span>
                               <ActionIcon name="external" />
                             </a>
                           </div>
@@ -2342,7 +2382,10 @@ export default function App() {
 
                   <div className="ticket-platforms-section">
                     <div className="section-title-wrap">
-                      <h3 className="ticket-section-title">Bilheterias Oficiais em {selectedCity}</h3>
+                      <div className="section-title-row">
+                        <h3 className="ticket-section-title">Bilheterias Oficiais em {selectedCity}</h3>
+                        <span className="section-verified-pill">✓ 100% Venda Oficial</span>
+                      </div>
                       <p className="ticket-section-desc">Consulte a programação completa, datas confirmadas e venda oficial em tempo real:</p>
                     </div>
 
@@ -2364,14 +2407,14 @@ export default function App() {
                               </div>
                               <div className="plat-info-col">
                                 <span className="plat-name">{plat.name}</span>
-                                <span className="plat-badge-pill" style={{ color: plat.color, borderColor: `${plat.color}40` }}>
+                                <span className="plat-badge-pill" style={{ color: plat.color, borderColor: `${plat.color}40`, backgroundColor: `${plat.color}15` }}>
                                   {plat.badge}
                                 </span>
                               </div>
                             </div>
                             <p className="plat-desc">{plat.description}</p>
                             <div className="plat-cta">
-                              <span>Consultar Ingressos</span>
+                              <span>Acessar Programação</span>
                               <ActionIcon name="external" />
                             </div>
                           </a>
@@ -2383,7 +2426,7 @@ export default function App() {
                   {festivals.length > 0 && (
                     <div className="major-festivals-section">
                       <div className="section-title-wrap">
-                        <h3 className="ticket-section-title">Grandes Festivais Confirmados no Brasil</h3>
+                        <h3 className="ticket-section-title">Grandes Festivais no Brasil</h3>
                         <p className="ticket-section-desc">Sites oficiais e ingressos dos maiores eventos do país:</p>
                       </div>
 
@@ -2405,7 +2448,7 @@ export default function App() {
                               <p className="fest-venue">📍 {fest.venue}</p>
                               <span className="fest-city-tag">{fest.city} - {fest.state}</span>
                               <div className="fest-link">
-                                <span>Site Oficial</span>
+                                <span>Lineup & Ingressos</span>
                                 <ActionIcon name="external" />
                               </div>
                             </div>

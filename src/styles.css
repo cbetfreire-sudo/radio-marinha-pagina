@@ -1053,46 +1053,119 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   white-space: nowrap;
 }
 
-/* ── Card de Turnê do Artista no Ar ───────────────────────── */
+/* ── Barra Rápida de Cidades ─────────────────────────────── */
+.shows-quick-cities-bar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  margin-bottom: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex-shrink: 0;
+}
+.shows-quick-cities-bar::-webkit-scrollbar {
+  display: none;
+}
+.quick-city-chip {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: .66rem;
+  font-weight: 700;
+  color: var(--mist);
+  background: rgba(11, 20, 38, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+.quick-city-chip:hover {
+  color: #fff;
+  background: rgba(42, 143, 180, 0.25);
+  border-color: rgba(42, 143, 180, 0.40);
+  transform: translateY(-1px);
+}
+.quick-city-chip.active {
+  color: #0b1426;
+  background: linear-gradient(135deg, var(--gold-300), var(--gold-400));
+  border-color: var(--gold-300);
+  font-weight: 800;
+  box-shadow: 0 2px 10px rgba(196, 151, 90, 0.40);
+}
+.quick-city-more {
+  color: var(--ocean-300);
+  border-style: dashed;
+  border-color: rgba(42, 143, 180, 0.40);
+}
+.quick-city-more:hover {
+  background: rgba(42, 143, 180, 0.30);
+  color: #fff;
+}
+
+/* ── Card VIP de Turnê do Artista no Ar ────────────────────── */
 .artist-tour-card {
-  padding: 16px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(30, 107, 138, 0.25) 0%, rgba(15, 23, 42, 0.85) 100%);
-  border: 1px solid rgba(42, 143, 180, 0.40);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.30);
+  padding: 18px 20px;
+  border-radius: 18px;
+  background: radial-gradient(ellipse at top left, rgba(42, 143, 180, 0.30) 0%, rgba(15, 23, 42, 0.90) 80%);
+  border: 1px solid rgba(42, 143, 180, 0.45);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
+  margin-bottom: 12px;
 }
 .artist-tour-card::before {
   content: "";
   position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle, rgba(196, 151, 90, 0.20) 0%, transparent 70%);
+  top: -50px;
+  right: -50px;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(196, 151, 90, 0.25) 0%, transparent 70%);
   pointer-events: none;
 }
 .artist-tour-inner {
   display: flex;
-  gap: 16px;
+  gap: 20px;
   align-items: center;
 }
+.artist-tour-media-wrap {
+  position: relative;
+  width: 86px;
+  height: 86px;
+  flex-shrink: 0;
+}
 .artist-tour-media {
-  width: 78px;
-  height: 78px;
+  position: relative;
+  z-index: 2;
+  width: 86px;
+  height: 86px;
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
-  border: 2px solid rgba(196, 151, 90, 0.45);
-  flex-shrink: 0;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.50);
+  border: 2px solid rgba(196, 151, 90, 0.55);
   background: rgba(11, 20, 38, 0.8);
 }
 .artist-tour-thumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.artist-tour-vinyl-disk {
+  position: absolute;
+  top: 5px;
+  right: -10px;
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #2d3748 10%, #1a202c 25%, #111 40%, #000 70%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  z-index: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+  transition: transform .4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.artist-tour-card:hover .artist-tour-vinyl-disk {
+  transform: translateX(18px) rotate(180deg);
 }
 .artist-tour-content {
   flex: 1;
@@ -1101,35 +1174,50 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
 .artist-tour-live-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: .56rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .08em;
-  padding: 2px 8px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(196, 151, 90, 0.20);
+  background: rgba(196, 151, 90, 0.22);
   color: var(--gold-400);
-  border: 1px solid rgba(196, 151, 90, 0.35);
-  margin-bottom: 4px;
+  border: 1px solid rgba(196, 151, 90, 0.40);
+  margin-bottom: 6px;
 }
-.live-indicator-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.equalizer-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+}
+.equalizer-bars .bar {
+  width: 2px;
   background: #22c55e;
-  box-shadow: 0 0 8px #22c55e;
-  animation: pulse-badge 2s infinite ease-in-out;
+  border-radius: 2px;
 }
-@keyframes pulse-badge {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.4); opacity: 0.6; }
+.equalizer-bars .bar-1 {
+  height: 10px;
+  animation: eq-bounce 0.8s ease-in-out infinite alternate;
+}
+.equalizer-bars .bar-2 {
+  height: 6px;
+  animation: eq-bounce 0.6s ease-in-out 0.2s infinite alternate;
+}
+.equalizer-bars .bar-3 {
+  height: 8px;
+  animation: eq-bounce 0.9s ease-in-out 0.4s infinite alternate;
+}
+@keyframes eq-bounce {
+  0% { height: 3px; }
+  100% { height: 11px; }
 }
 .artist-tour-title {
-  font-size: .92rem;
+  font-size: 1.02rem;
   font-weight: 600;
   color: var(--pearl);
-  margin: 0 0 2px;
+  margin: 0 0 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1139,72 +1227,92 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   font-weight: 800;
 }
 .artist-tour-desc {
-  font-size: .68rem;
+  font-size: .70rem;
   color: var(--mist);
-  margin: 0 0 8px;
+  margin: 0 0 10px;
 }
 .artist-tour-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 .tour-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  font-size: .66rem;
-  font-weight: 700;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: .70rem;
+  font-weight: 800;
   text-decoration: none;
   color: #fff;
-  background: rgba(11, 20, 38, 0.70);
-  border: 1px solid var(--border-subtle);
-  transition: all .2s ease;
+  transition: all .25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
 }
-.tour-btn .action-icon { width: 11px; height: 11px; }
-.tour-google {
-  background: linear-gradient(135deg, rgba(196, 151, 90, 0.35), rgba(196, 151, 90, 0.15));
-  border-color: rgba(196, 151, 90, 0.50);
-  color: var(--gold-300);
+.tour-btn-icon {
+  font-size: .85rem;
 }
-.tour-google:hover {
-  background: var(--gold-400);
-  color: #0b1426;
-  border-color: var(--gold-300);
-  transform: translateY(-1px);
+.tour-btn .action-icon {
+  width: 12px;
+  height: 12px;
+  transition: transform .2s ease;
+}
+.tour-sympla {
+  background: linear-gradient(135deg, #00D8A5 0%, #00a880 100%);
+  color: #022b20;
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 .tour-sympla:hover {
-  background: #00D8A5;
-  color: #032b21;
-  border-color: #00D8A5;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #05f0b8 0%, #00D8A5 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 216, 165, 0.40);
+}
+.tour-sympla:hover .action-icon {
+  transform: translateX(2px);
+}
+.tour-eventim {
+  background: linear-gradient(135deg, #0050b3 0%, #00367a 100%);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .tour-eventim:hover {
-  background: #0050b3;
-  color: #fff;
-  border-color: #0050b3;
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, #0d6efd 0%, #0050b3 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(13, 110, 253, 0.40);
 }
-.tour-tm:hover {
-  background: #026CDF;
-  color: #fff;
-  border-color: #026CDF;
-  transform: translateY(-1px);
+.tour-eventim:hover .action-icon {
+  transform: translateX(2px);
 }
 
 /* ── Bilheterias Oficiais da Cidade ───────────────────────── */
 .section-title-wrap {
   margin-bottom: 12px;
 }
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
 .ticket-section-title {
-  font-size: .86rem;
+  font-size: .88rem;
   font-weight: 700;
   color: var(--pearl);
-  margin: 0 0 2px;
+  margin: 0;
+}
+.section-verified-pill {
+  font-size: .54rem;
+  font-weight: 800;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.30);
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: .04em;
 }
 .ticket-section-desc {
-  font-size: .66rem;
+  font-size: .68rem;
   color: var(--fog);
   margin: 0;
 }
@@ -1216,19 +1324,20 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
 .ticket-platform-card {
   display: flex;
   flex-direction: column;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: linear-gradient(145deg, rgba(20, 32, 54, 0.75), rgba(11, 20, 38, 0.90));
+  padding: 16px;
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(20, 32, 54, 0.80), rgba(11, 20, 38, 0.95));
   border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   text-decoration: none;
-  transition: border-color .22s ease, transform .22s ease, box-shadow .22s ease;
+  transition: all .25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.20);
 }
 .ticket-platform-card:hover {
-  border-color: rgba(42, 143, 180, 0.50);
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-color: rgba(42, 143, 180, 0.55);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.40);
 }
 .plat-top-row {
   display: flex;
@@ -1237,16 +1346,16 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   margin-bottom: 10px;
 }
 .plat-brand-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: .72rem;
+  font-size: .75rem;
   font-weight: 900;
   color: #fff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.40);
   flex-shrink: 0;
 }
 .plat-info-col {
@@ -1255,7 +1364,7 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   min-width: 0;
 }
 .plat-name {
-  font-size: .84rem;
+  font-size: .86rem;
   font-weight: 700;
   color: #fff;
   line-height: 1.2;
@@ -1282,26 +1391,29 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 7px 14px;
+  border-radius: 9px;
   background: rgba(42, 143, 180, 0.15);
   border: 1px solid rgba(42, 143, 180, 0.30);
   color: var(--ocean-300);
-  font-size: .66rem;
+  font-size: .68rem;
   font-weight: 700;
   transition: all .2s ease;
 }
-.plat-cta .action-icon { width: 11px; height: 11px; }
+.plat-cta .action-icon { width: 11px; height: 11px; transition: transform .2s ease; }
 .ticket-platform-card:hover .plat-cta {
   background: var(--ocean-500);
   color: #fff;
   border-color: var(--ocean-400);
-  box-shadow: 0 2px 10px rgba(42, 143, 180, 0.30);
+  box-shadow: 0 4px 14px rgba(42, 143, 180, 0.35);
+}
+.ticket-platform-card:hover .plat-cta .action-icon {
+  transform: translateX(2px);
 }
 
 /* ── Grandes Festivais Confirmados no Brasil ──────────────── */
 .major-festivals-section {
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .festivals-grid {
   display: grid;
@@ -1311,22 +1423,22 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
 .festival-card {
   display: flex;
   flex-direction: column;
-  border-radius: 14px;
+  border-radius: 16px;
   overflow: hidden;
-  background: linear-gradient(145deg, rgba(20, 32, 54, 0.75), rgba(11, 20, 38, 0.90));
+  background: linear-gradient(145deg, rgba(20, 32, 54, 0.80), rgba(11, 20, 38, 0.95));
   border: 1px solid rgba(255, 255, 255, 0.08);
   text-decoration: none;
-  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+  transition: transform .25s ease, border-color .25s ease, box-shadow .25s ease;
 }
 .festival-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(196, 151, 90, 0.45);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  transform: translateY(-3px);
+  border-color: rgba(196, 151, 90, 0.50);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.40);
 }
 .fest-img-wrap {
   position: relative;
   width: 100%;
-  height: 90px;
+  height: 96px;
   overflow: hidden;
   background: rgba(11, 20, 38, 0.6);
 }
@@ -1334,33 +1446,34 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform .35s ease;
+  transition: transform .4s ease;
 }
 .festival-card:hover .fest-img-wrap img {
-  transform: scale(1.06);
+  transform: scale(1.08);
 }
 .fest-badge {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  font-size: .48rem;
+  top: 8px;
+  left: 8px;
+  font-size: .50rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .06em;
-  background: rgba(11, 20, 38, 0.88);
+  background: rgba(11, 20, 38, 0.90);
   color: var(--gold-400);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid rgba(196, 151, 90, 0.3);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(196, 151, 90, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 .fest-body {
-  padding: 12px 14px;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
   flex: 1;
 }
 .fest-name {
-  font-size: .84rem;
+  font-size: .86rem;
   font-weight: 700;
   color: #fff;
   margin: 0 0 3px;
@@ -1385,16 +1498,19 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: .64rem;
+  font-size: .66rem;
   font-weight: 700;
   color: var(--brass-300);
   margin-top: auto;
   transition: color .2s ease, gap .2s ease;
 }
-.fest-link .action-icon { width: 11px; height: 11px; }
+.fest-link .action-icon { width: 11px; height: 11px; transition: transform .2s ease; }
 .festival-card:hover .fest-link {
   color: #fff;
   gap: 6px;
+}
+.festival-card:hover .fest-link .action-icon {
+  transform: translateX(2px);
 }
 
 /* ── Modal de Cidades (City Picker) ───────────────────────── */
