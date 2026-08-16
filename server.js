@@ -847,11 +847,40 @@ function isMatchingWikiTitle(pageTitle, targetName) {
     const cleanTarget = normalizeMetadata(targetName.replace(/\s*\([^)]*\)/g, ''));
     if (!cleanPage || !cleanTarget) return false;
     if (cleanPage === cleanTarget) return true;
-    if (cleanPage.includes(cleanTarget) || cleanTarget.includes(cleanPage)) return true;
-    const dist = getLevenshteinDistance(cleanPage, cleanTarget);
-    const maxLen = Math.max(cleanPage.length, cleanTarget.length);
-    if (maxLen > 5 && dist <= 2) return true;
+    if (cleanPage.startsWith(cleanTarget) || cleanTarget.startsWith(cleanPage)) return true;
+    if (cleanPage.endsWith(cleanTarget) || cleanTarget.endsWith(cleanPage)) return true;
+    const pNoE = cleanPage.replace(/\be\b/g, '').replace(/\s+/g, ' ').trim();
+    const tNoE = cleanTarget.replace(/\be\b/g, '').replace(/\s+/g, ' ').trim();
+    if (pNoE && pNoE === tNoE) return true;
     return false;
+}
+
+function isMusicalArtist(sumData) {
+    if (!sumData) return false;
+    const text = `${sumData.description || ''} ${sumData.extract || ''}`.toLowerCase();
+    
+    const nonMusicKeywords = [
+        'footballer', 'futebolista', 'jogador de futebol', 'jogador', 'atleta',
+        'político', 'politico', 'politician', 'militar', 'prelado', 'bispo',
+        'governador', 'prefeito', 'senador', 'deputado', 'juiz', 'advogado',
+        'município', 'municipio', 'cidade', 'telenovela', 'filme', 'empresa',
+        'escritor', 'poeta', 'geógrafo', 'historiador', 'médico'
+    ];
+
+    const musicKeywords = [
+        'cantor', 'cantora', 'músic', 'music', 'banda', 'band', 'compositor',
+        'songwriter', 'singer', 'rapper', 'violonista', 'guitarrista', 'pianista',
+        'baterista', 'baixista', 'intérprete', 'dupla', 'trio', 'grupo musical',
+        'vocalista', 'discografia', 'álbum', 'album', 'gravou', 'canção', 'canções',
+        'single', 'mpb', 'sertanejo', 'rock', 'pop', 'samba', 'pagode', 'bossa nova'
+    ];
+
+    const hasMusic = musicKeywords.some(w => text.includes(w));
+    const desc = (sumData.description || '').toLowerCase();
+    const hasNonMusicOnly = nonMusicKeywords.some(w => desc.includes(w)) && !hasMusic;
+
+    if (hasNonMusicOnly) return false;
+    return hasMusic;
 }
 
 async function fetchWikipediaArtist(artistName) {
@@ -872,7 +901,7 @@ async function fetchWikipediaArtist(artistName) {
             if (sumRes.ok) {
                 const sumData = await sumRes.json();
                 if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
-                    if (isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) {
+                    if ((isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) && isMusicalArtist(sumData)) {
                         return {
                             name: sumData.title || query,
                             biography: sumData.extract,
@@ -908,7 +937,7 @@ async function fetchWikipediaArtist(artistName) {
                     if (sumRes.ok) {
                         const sumData = await sumRes.json();
                         if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
-                            if (isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) {
+                            if ((isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) && isMusicalArtist(sumData)) {
                                 return {
                                     name: sumData.title || query,
                                     biography: sumData.extract,
@@ -948,7 +977,7 @@ async function fetchWikipediaArtist(artistName) {
                     if (sumRes.ok) {
                         const sumData = await sumRes.json();
                         if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
-                            if (isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) {
+                            if ((isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) && isMusicalArtist(sumData)) {
                                 return {
                                     name: sumData.title || query,
                                     biography: sumData.extract,
