@@ -2094,10 +2094,10 @@ export default function App() {
             <nav className="tabs" aria-label="Conteúdo da rádio">
               <button className={panel === "lyrics" ? "active" : ""} onClick={() => setPanel("lyrics")}>Letra</button>
               <button className={panel === "artist" ? "active" : ""} onClick={() => setPanel("artist")}>Artista</button>
-              <button className={panel === "news" ? "active" : ""} onClick={() => setPanel("news")}>Notícias</button>
-              <button className={panel === "shows" ? "active" : ""} onClick={() => setPanel("shows")}>Shows</button>
               <button className={panel === "recent" ? "active" : ""} onClick={() => setPanel("recent")}>Recentes</button>
               <button className={panel === "favorites" ? "active" : ""} onClick={() => setPanel("favorites")}>Favoritos</button>
+              <button className={panel === "news" ? "active" : ""} onClick={() => setPanel("news")}>Notícias</button>
+              <button className={panel === "shows" ? "active" : ""} onClick={() => setPanel("shows")}>Shows</button>
             </nav>
 
             <div className="tab-content" style={dynamicCoverStyle}>
