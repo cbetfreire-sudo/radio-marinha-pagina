@@ -2345,7 +2345,7 @@ export default function App() {
                               <ActionIcon name="external" />
                             </a>
                             <a
-                              href={`https://www.ticketmaster.com.br/search?q=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
+                              href={`https://www.google.com/search?q=${encodeURIComponent('site:ticketmaster.com.br ' + track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="tour-btn tour-tm"
