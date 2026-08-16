@@ -324,9 +324,29 @@ function trackMatchScore(result, artist, title, targetDuration = 0, albumHint = 
     return score;
 }
 
-async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = '') {
+async function fetchDeezerArtistImage(artistName) {
     try {
-        const query = encodeURIComponent([artist, title].filter(Boolean).join(' '));
+        const clean = cleanRadioMetadata(artistName).replace(/[\uFFFD]/g, '').trim();
+        if (!clean || isStationIdentifier(clean, '')) return null;
+        const res = await fetchWithTimeout(
+            `https://api.deezer.com/search/artist?q=${encodeURIComponent(clean)}&limit=1`,
+            {},
+            3000
+        );
+        if (res.ok) {
+            const data = await res.json();
+            const artist = data.data?.[0];
+            return artist?.picture_xl || artist?.picture_big || artist?.picture_medium || null;
+        }
+    } catch {}
+    return null;
+}
+
+async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = '') {
+    const cleanArtist = cleanRadioMetadata(artist);
+    const cleanTitle = cleanRadioMetadata(title);
+    try {
+        const query = encodeURIComponent([cleanArtist, cleanTitle].filter(Boolean).join(' '));
         const [deezerResponse, itunesResponse] = await Promise.allSettled([
             fetchWithTimeout(`https://api.deezer.com/search?q=${query}&limit=10`, {}, 4000)
                 .then((response) => response.json()),
@@ -348,10 +368,10 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
             }))
             : [];
         const matchingTracks = [...deezerTracks, ...itunesTracks]
-            .filter((result) => isMatchingTrack(result, artist, title));
-        const versionCompatibleTracks = hasVersionMarker(title)
+            .filter((result) => isMatchingTrack(result, cleanArtist, cleanTitle));
+        const versionCompatibleTracks = hasVersionMarker(cleanTitle)
             ? matchingTracks.filter((result) => hasMatchingVersionProfile(
-                title,
+                cleanTitle,
                 [result.title, result.title_version].filter(Boolean).join(' ')
             ))
             : matchingTracks;
@@ -365,7 +385,7 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
             .map((result, index) => ({
                 result,
                 index,
-                score: trackMatchScore(result, artist, title, targetDuration, albumHint)
+                score: trackMatchScore(result, cleanArtist, cleanTitle, targetDuration, albumHint)
             }))
             .filter(({ score }) => Number.isFinite(score))
             .sort((first, second) => second.score - first.score || first.index - second.index)[0]?.result;
@@ -378,22 +398,32 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
                 ? Math.max(...candidateDurations) - Math.min(...candidateDurations)
                 : 0;
             const ambiguous = !targetDuration && durationSpread > 10;
+            let coverUrl = match.album?.cover_xl || match.album?.cover_big || null;
+            if (!coverUrl && cleanArtist && !isStationIdentifier(cleanArtist, '')) {
+                coverUrl = await fetchDeezerArtistImage(cleanArtist);
+            }
             return {
                 title: restoreAccents(title || match.title_short || match.title, officialValues, true),
                 artist: restoreAccents(artist || match.artist?.name || '', officialValues, true),
                 album: match.album?.title || null,
                 duration: sanitizeTrackDuration(match.duration),
-                cover: match.album?.cover_xl || match.album?.cover_big || null,
+                cover: coverUrl || null,
                 ambiguous
             };
         }
     } catch (e) { console.error("[CATALOG ERROR]:", e.message); }
+
+    let fallbackArtistCover = null;
+    if (cleanArtist && !isStationIdentifier(cleanArtist, '')) {
+        fallbackArtistCover = await fetchDeezerArtistImage(cleanArtist);
+    }
+
     return {
         title: restoreAccents(title, [], true),
         artist: restoreAccents(artist, [], true),
         album: null,
         duration: 0,
-        cover: null,
+        cover: fallbackArtistCover || null,
         ambiguous: true
     };
 }
@@ -427,8 +457,16 @@ async function processPlayingNext(nextData) {
     }
     const duration = sanitizeTrackDuration(nextData.duration);
     const catalog = await getCachedTrackMetadata(trackFields.artist, trackFields.title, duration, song.album);
-    const coverUrl = catalog?.cover
-        || (song.art && !song.art.includes('generic_song') ? song.art : FALLBACK_GIF);
+    let coverUrl = catalog?.cover;
+    if (!coverUrl && trackFields.artist && !isStationIdentifier(trackFields.artist, '')) {
+        coverUrl = await fetchDeezerArtistImage(trackFields.artist);
+    }
+    if (!coverUrl && song.art && !song.art.includes('generic_song')) {
+        coverUrl = song.art;
+    }
+    if (!coverUrl) {
+        coverUrl = FALLBACK_GIF;
+    }
 
     return {
         title: capitalizeTitle(catalog?.title || trackFields.title),
@@ -456,8 +494,16 @@ async function processSongHistory(rawHistory = []) {
         const formattedTime = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
         const artistName = trackFields.artist || "Rádio Marinha";
         const catalog = await getCachedTrackMetadata(artistName, trackFields.title, entry.duration, entry.song.album);
-        const coverUrl = catalog?.cover
-            || (entry.song.art && !entry.song.art.includes('generic_song') ? entry.song.art : FALLBACK_GIF);
+        let coverUrl = catalog?.cover;
+        if (!coverUrl && artistName && !isStationIdentifier(artistName, '')) {
+            coverUrl = await fetchDeezerArtistImage(artistName);
+        }
+        if (!coverUrl && entry.song.art && !entry.song.art.includes('generic_song')) {
+            coverUrl = entry.song.art;
+        }
+        if (!coverUrl) {
+            coverUrl = FALLBACK_GIF;
+        }
 
         validHistory.push({
             id: entry.sh_id || `hist-${playedAt}-${trackFields.title}`,
@@ -579,9 +625,15 @@ async function fetchRadioStatus() {
             // A URL de arte da transmissão também pode devolver a capa genérica sem
             // indicar isso no endereço. Só exibimos capas confirmadas pelo catálogo;
             // quando não há correspondência, usamos a animação da rádio.
-            const coverUrl = stationIdentifier
+            let coverUrl = stationIdentifier
                 ? FALLBACK_GIF
-                : catalogTrack?.cover || FALLBACK_GIF;
+                : catalogTrack?.cover;
+            if (!coverUrl && !stationIdentifier && safeArtist) {
+                coverUrl = await fetchDeezerArtistImage(safeArtist);
+            }
+            if (!coverUrl) {
+                coverUrl = FALLBACK_GIF;
+            }
             const durationReliable = Boolean(
                 sourceDuration || (catalogTrack?.duration && !catalogTrack.ambiguous)
             );
@@ -823,22 +875,6 @@ function getArtistSearchVariants(rawName) {
     }
 
     return Array.from(variants);
-}
-
-async function fetchDeezerArtistImage(artistName) {
-    try {
-        const res = await fetchWithTimeout(
-            `https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=1`,
-            {},
-            3000
-        );
-        if (res.ok) {
-            const data = await res.json();
-            const artist = data.data?.[0];
-            return artist?.picture_big || artist?.picture_medium || null;
-        }
-    } catch {}
-    return null;
 }
 
 function isMatchingWikiTitle(pageTitle, targetName) {

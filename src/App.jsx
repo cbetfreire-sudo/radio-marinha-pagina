@@ -1430,19 +1430,23 @@ export default function App() {
   const playbackKey = `${favoriteKey}—${track.playbackId || track.playedAt || track.updatedAt || "atual"}`;
   const favorite = favorites.some((item) => item.key === favoriteKey);
 
+  const effectiveCover = (track?.cover && track.cover !== FALLBACK_COVER)
+    ? track.cover
+    : (artistInfo?.image || FALLBACK_COVER);
+
   useEffect(() => {
-    if (!track?.cover || track.cover === FALLBACK_COVER) {
+    if (!effectiveCover || effectiveCover === FALLBACK_COVER) {
       setCoverPalette(null);
       return;
     }
     let isCurrent = true;
-    extractPaletteFromImage(track.cover, (palette) => {
+    extractPaletteFromImage(effectiveCover, (palette) => {
       if (isCurrent) setCoverPalette(palette);
     });
     return () => {
       isCurrent = false;
     };
-  }, [track?.cover]);
+  }, [effectiveCover]);
 
   function displayTrack(nextTrackItem) {
     clearTimeout(pendingTrackTimerRef.current);
@@ -1592,13 +1596,13 @@ export default function App() {
       title: track.title,
       artist: track.artist,
       album: "Rádio Marinha",
-      artwork: [{ src: new URL(track.cover || FALLBACK_COVER, window.location.href).href }]
+      artwork: [{ src: new URL(effectiveCover || FALLBACK_COVER, window.location.href).href }]
     });
     navigator.mediaSession.setActionHandler("play", () => {
       if (!playing) void startRadio();
     });
     navigator.mediaSession.setActionHandler("pause", () => audioRef.current?.pause());
-  }, [loading, playing, track]);
+  }, [effectiveCover, loading, playing, track.artist, track.title]);
 
   useEffect(() => {
     if (!track.artist || !track.title || track.artist === "Rádio Marinha") {
@@ -1898,7 +1902,7 @@ export default function App() {
                 <span className="mini-wave" aria-hidden="true">{Array.from({ length: 7 }, (_, index) => <i key={index} style={{ "--bar": index }} />)}</span>
                 <span className="eyebrow">{loading ? "SUSPENDENDO" : playing ? "NAVEGANDO" : "RÁDIO FUNDEADA"}</span>
               </div>
-              <img className="cover" src={track.cover || FALLBACK_COVER} alt={`Capa de ${track.title}`} onError={useFallbackCover} />
+              <img className="cover" src={effectiveCover} alt={`Capa de ${track.title}`} onError={useFallbackCover} />
             </div>
             <div className="track-copy">
               <h1>{track.title}</h1>
