@@ -1264,11 +1264,11 @@ async function fetchMusicNews() {
             translate: false
         },
         {
-            source: 'Billboard',
-            badge: 'Billboard',
+            source: 'UOL Música',
+            badge: 'UOL Música',
             tagColor: '#0284c7',
-            url: 'https://www.billboard.com/feed/',
-            translate: true
+            url: 'https://musicnonstop.uol.com.br/feed/',
+            translate: false
         },
         {
             source: 'G1 Música',
