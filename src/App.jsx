@@ -2207,7 +2207,6 @@ export default function App() {
                     <button className={newsFilter === "all" ? "active" : ""} onClick={() => setNewsFilter("all")}>Todas</button>
                     <button className={newsFilter === "Rolling Stone" ? "active" : ""} onClick={() => setNewsFilter("Rolling Stone")}>Rolling Stone</button>
                     <button className={newsFilter === "Billboard" ? "active" : ""} onClick={() => setNewsFilter("Billboard")}>Billboard</button>
-                    <button className={newsFilter === "TMDQA!" ? "active" : ""} onClick={() => setNewsFilter("TMDQA!")}>TMDQA!</button>
                     <button className={newsFilter === "G1 Música" ? "active" : ""} onClick={() => setNewsFilter("G1 Música")}>G1</button>
                   </div>
 

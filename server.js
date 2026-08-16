@@ -1241,12 +1241,6 @@ async function fetchMusicNews() {
             url: 'https://billboard.com.br/feed/'
         },
         {
-            source: 'Tenho Mais Discos Que Amigos!',
-            badge: 'TMDQA!',
-            tagColor: '#2563eb',
-            url: 'https://www.tenhomaisdiscosqueamigos.com/feed/'
-        },
-        {
             source: 'G1 Música',
             badge: 'G1 Música',
             tagColor: '#ea580c',
