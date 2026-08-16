@@ -1407,420 +1407,69 @@ app.get('/api/location', async (req, res) => {
     }
 });
 
-// ── Agenda Dinâmica de Shows e Festivais no Brasil ───────────
-function createUpcomingShow({ id, city, state, artist, title, month, day, timeLabel = '21:00', venue, image, genre, ticketUrl }) {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    let showDate = new Date(currentYear, month - 1, day, 21, 0, 0);
+// ── Guia Oficial de Ingressos e Festivais no Brasil ──────────
+const CITY_UF_MAP = {
+    'brasilia': 'DF',
+    'rio de janeiro': 'RJ',
+    'sao paulo': 'SP',
+    'salvador': 'BA',
+    'belo horizonte': 'MG',
+    'curitiba': 'PR',
+    'recife': 'PE',
+    'porto alegre': 'RS',
+    'fortaleza': 'CE',
+    'manaus': 'AM',
+    'goiania': 'GO',
+    'belem': 'PA',
+    'florianopolis': 'SC',
+    'vitoria': 'ES',
+    'natal': 'RN',
+    'maceio': 'AL',
+    'joao pessoa': 'PB',
+    'cuiaba': 'MT',
+    'campo grande': 'MS'
+};
 
-    // Se a data já passou no ano atual, projeta para o próximo ano
-    if (showDate.getTime() < now.getTime() - (24 * 60 * 60 * 1000)) {
-        showDate = new Date(currentYear + 1, month - 1, day, 21, 0, 0);
-    }
-
-    const monthsAbbr = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const pad = (n) => String(n).padStart(2, '0');
-
-    return {
-        id,
-        city,
-        state,
-        artist,
-        title,
-        date: showDate.toISOString(),
-        timestamp: showDate.getTime(),
-        dateLabel: `${pad(day)} ${monthsAbbr[showDate.getMonth()]} ${showDate.getFullYear()}`,
-        timeLabel,
-        venue,
-        image,
-        genre,
-        ticketUrl
-    };
-}
-
-const RAW_CONCERT_DATA = [
-    // Brasília - DF
+const MAJOR_BRAZILIAN_FESTIVALS = [
     {
-        id: 'bsb-1',
-        city: 'Brasília',
-        state: 'DF',
-        artist: 'Gilberto Gil — Turnê Tempo Rei',
-        title: 'Gilberto Gil: A Grande Turnê Tempo Rei',
-        month: 10,
-        day: 24,
-        timeLabel: '21:00',
-        venue: 'Arena BRB Mané Garrincha',
+        id: 'fest-rir',
+        name: 'Rock in Rio',
+        city: 'Rio de Janeiro',
+        state: 'RJ',
+        venue: 'Cidade do Rock — Barra Olímpica',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB / Ensaio',
-        ticketUrl: 'https://www.eventim.com.br'
+        badge: 'Festival Mundial',
+        url: 'https://rockinrio.com/'
     },
     {
-        id: 'bsb-2',
-        city: 'Brasília',
-        state: 'DF',
-        artist: 'Liniker — Caju Tour',
-        title: 'Liniker: Turnê do Álbum CAJU',
-        month: 11,
-        day: 14,
-        timeLabel: '20:30',
-        venue: 'Centro de Convenções Ulysses Guimarães',
-        image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
-        genre: 'Soul / MPB',
-        ticketUrl: 'https://www.sympla.com.br'
-    },
-    {
-        id: 'bsb-3',
-        city: 'Brasília',
-        state: 'DF',
-        artist: 'Festival Na Praia Brasília',
-        title: 'Festival Na Praia — Edição Especial',
-        month: 9,
-        day: 12,
-        timeLabel: '18:00',
-        venue: 'Setor de Clubes Esportivos Sul',
-        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
-        genre: 'Festival / Pop / MPB',
-        ticketUrl: 'https://r2.com.br/napraia'
-    },
-    {
-        id: 'bsb-4',
-        city: 'Brasília',
-        state: 'DF',
-        artist: 'Nando Reis & Os Infernais',
-        title: 'Nando Reis: Uma Estrela Misteriosa',
-        month: 10,
-        day: 10,
-        timeLabel: '21:30',
-        venue: 'Auditório Master — Ulysses Guimarães',
-        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
-        genre: 'Pop Rock',
-        ticketUrl: 'https://www.bilheteriadigital.com'
-    },
-    {
-        id: 'bsb-5',
-        city: 'Brasília',
-        state: 'DF',
-        artist: 'Capital Inicial — 40 Anos',
-        title: 'Capital Inicial: Especial em Casa',
-        month: 12,
-        day: 5,
-        timeLabel: '22:00',
-        venue: 'Arena BRB Nilson Nelson',
-        image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
-        genre: 'Rock Nacional',
-        ticketUrl: 'https://www.eventim.com.br'
-    },
-
-    // Rio de Janeiro - RJ
-    {
-        id: 'rj-1',
-        city: 'Rio de Janeiro',
-        state: 'RJ',
-        artist: 'Caetano Veloso & Maria Bethânia',
-        title: 'Caetano & Bethânia — Turnê Histórica',
-        month: 11,
-        day: 28,
-        timeLabel: '21:00',
-        venue: 'Farmasi Arena — Barra da Tijuca',
-        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB',
-        ticketUrl: 'https://www.ticketmaster.com.br'
-    },
-    {
-        id: 'rj-2',
-        city: 'Rio de Janeiro',
-        state: 'RJ',
-        artist: 'Djavan — Turnê D',
-        title: 'Djavan ao Vivo no Rio de Janeiro',
-        month: 10,
-        day: 17,
-        timeLabel: '21:30',
-        venue: 'Vivo Rio — Aterro do Flamengo',
-        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB / Jazz',
-        ticketUrl: 'https://www.vivorio.com.br'
-    },
-    {
-        id: 'rj-3',
-        city: 'Rio de Janeiro',
-        state: 'RJ',
-        artist: 'Zeca Pagodinho — 40 Anos de Samba',
-        title: 'Zeca Pagodinho no Circo Voador',
-        month: 12,
-        day: 12,
-        timeLabel: '22:00',
-        venue: 'Circo Voador — Lapa',
-        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-        genre: 'Samba',
-        ticketUrl: 'https://www.eventim.com.br'
-    },
-    {
-        id: 'rj-4',
-        city: 'Rio de Janeiro',
-        state: 'RJ',
-        artist: 'Marisa Monte — Portas Tour',
-        title: 'Marisa Monte no Qualistage',
-        month: 11,
-        day: 7,
-        timeLabel: '21:00',
-        venue: 'Qualistage — Via Parque',
-        image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB',
-        ticketUrl: 'https://www.ticketmaster.com.br'
-    },
-
-    // São Paulo - SP
-    {
-        id: 'sp-1',
+        id: 'fest-lolla',
+        name: 'Lollapalooza Brasil',
         city: 'São Paulo',
         state: 'SP',
-        artist: 'Lollapalooza Brasil',
-        title: 'Lollapalooza Brasil — Autódromo de Interlagos',
-        month: 3,
-        day: 27,
-        timeLabel: '12:00',
         venue: 'Autódromo de Interlagos',
         image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
-        genre: 'Festival Internacional / Rock / Pop',
-        ticketUrl: 'https://www.ticketmaster.com.br'
+        badge: 'Internacional / Pop / Rock',
+        url: 'https://lollapaloozabr.com/'
     },
     {
-        id: 'sp-2',
-        city: 'São Paulo',
+        id: 'fest-jr',
+        name: 'Festival João Rock',
+        city: 'Ribeirão Preto',
         state: 'SP',
-        artist: 'Gilberto Gil — Turnê Tempo Rei',
-        title: 'Gilberto Gil em São Paulo',
-        month: 11,
-        day: 21,
-        timeLabel: '20:30',
-        venue: 'Allianz Parque',
-        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB',
-        ticketUrl: 'https://www.eventim.com.br'
-    },
-    {
-        id: 'sp-3',
-        city: 'São Paulo',
-        state: 'SP',
-        artist: 'Sepultura — Celebrating Life Through Death',
-        title: 'Sepultura: Turnê de Despedida Mundial',
-        month: 10,
-        day: 31,
-        timeLabel: '21:00',
-        venue: 'Espaço Unimed — Barra Funda',
+        venue: 'Parque Permanente de Exposições',
         image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
-        genre: 'Heavy Metal',
-        ticketUrl: 'https://www.eventim.com.br'
+        badge: 'Rock Nacional / MPB',
+        url: 'https://www.joaorock.com.br/'
     },
     {
-        id: 'sp-4',
+        id: 'fest-coala',
+        name: 'Coala Festival',
         city: 'São Paulo',
         state: 'SP',
-        artist: 'Jão — Superturnê',
-        title: 'Jão: A Grande Superturnê',
-        month: 12,
-        day: 19,
-        timeLabel: '21:00',
-        venue: 'Allianz Parque',
-        image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
-        genre: 'Pop Nacional',
-        ticketUrl: 'https://www.eventim.com.br'
-    },
-
-    // Salvador - BA
-    {
-        id: 'ssa-1',
-        city: 'Salvador',
-        state: 'BA',
-        artist: 'Gilberto Gil — Turnê Tempo Rei',
-        title: 'Gilberto Gil: Tempo Rei em Salvador',
-        month: 10,
-        day: 15,
-        timeLabel: '19:00',
-        venue: 'Casa de Apostas Arena Fonte Nova',
-        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB / Axé',
-        ticketUrl: 'https://www.eventim.com.br'
-    },
-    {
-        id: 'ssa-2',
-        city: 'Salvador',
-        state: 'BA',
-        artist: 'BaianaSystem — Navio Pirata',
-        title: 'BaianaSystem: O Baile Especial',
-        month: 11,
-        day: 8,
-        timeLabel: '21:00',
-        venue: 'Concha Acústica do TCA',
-        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
-        genre: 'Sound System / Afro-Rock',
-        ticketUrl: 'https://www.sympla.com.br'
-    },
-    {
-        id: 'ssa-3',
-        city: 'Salvador',
-        state: 'BA',
-        artist: 'Maria Rita — Samba da Maria',
-        title: 'Maria Rita: Samba da Maria em Salvador',
-        month: 12,
-        day: 6,
-        timeLabel: '20:00',
-        venue: 'Concha Acústica do Teatro Castro Alves',
-        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-        genre: 'Samba / MPB',
-        ticketUrl: 'https://www.sympla.com.br'
-    },
-
-    // Belo Horizonte - MG
-    {
-        id: 'bh-1',
-        city: 'Belo Horizonte',
-        state: 'MG',
-        artist: 'Milton Nascimento & Esperanza Spalding',
-        title: 'Milton + Esperanza — Encontro Especial',
-        month: 11,
-        day: 13,
-        timeLabel: '21:00',
-        venue: 'Arena Hall (Antigo Chevrolet Hall)',
-        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
-        genre: 'Clube da Esquina / Jazz',
-        ticketUrl: 'https://www.sympla.com.br'
-    },
-    {
-        id: 'bh-2',
-        city: 'Belo Horizonte',
-        state: 'MG',
-        artist: 'Samuel Rosa — Tour Solo',
-        title: 'Samuel Rosa: Tour Solo e Clássicos',
-        month: 10,
-        day: 23,
-        timeLabel: '21:30',
-        venue: 'Palácio das Artes',
-        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
-        genre: 'Pop Rock',
-        ticketUrl: 'https://www.eventim.com.br'
-    },
-
-    // Curitiba - PR
-    {
-        id: 'cwb-1',
-        city: 'Curitiba',
-        state: 'PR',
-        artist: 'Caetano Veloso & Maria Bethânia',
-        title: 'Caetano & Bethânia na Pedreira',
-        month: 12,
-        day: 11,
-        timeLabel: '20:00',
-        venue: 'Pedreira Paulo Leminski',
-        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB',
-        ticketUrl: 'https://www.ticketmaster.com.br'
-    },
-    {
-        id: 'cwb-2',
-        city: 'Curitiba',
-        state: 'PR',
-        artist: 'Festival Prime Rock Brasil Curitiba',
-        title: 'Prime Rock Brasil: Os Clássicos do Rock Nacional',
-        month: 11,
-        day: 22,
-        timeLabel: '14:00',
-        venue: 'Pedreira Paulo Leminski',
-        image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
-        genre: 'Rock Brasil',
-        ticketUrl: 'https://www.blueticket.com.br'
-    },
-
-    // Recife - PE
-    {
-        id: 'rec-1',
-        city: 'Recife',
-        state: 'PE',
-        artist: 'Alceu Valença & Orquestra Ouro Preto',
-        title: 'Alceu Valença: Valencianas II',
-        month: 11,
-        day: 20,
-        timeLabel: '21:00',
-        venue: 'Classic Hall — Olinda/Recife',
-        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-        genre: 'Frevo / MPB / Sinfônica',
-        ticketUrl: 'https://www.bilheteriadigital.com'
-    },
-    {
-        id: 'rec-2',
-        city: 'Recife',
-        state: 'PE',
-        artist: 'Lenine — Turnê Rizoma',
-        title: 'Lenine & Bruno Giorgi em Recife',
-        month: 10,
-        day: 9,
-        timeLabel: '20:30',
-        venue: 'Teatro Guararapes',
+        venue: 'Memorial da América Latina',
         image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB / Rock',
-        ticketUrl: 'https://www.sympla.com.br'
-    },
-
-    // Porto Alegre - RS
-    {
-        id: 'poa-1',
-        city: 'Porto Alegre',
-        state: 'RS',
-        artist: 'Humberto Gessinger — Turnê Especial',
-        title: 'Humberto Gessinger ao Vivo em Porto Alegre',
-        month: 10,
-        day: 16,
-        timeLabel: '21:00',
-        venue: 'Auditório Araújo Vianna',
-        image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
-        genre: 'Rock Gaúcho / MPB',
-        ticketUrl: 'https://www.sympla.com.br'
-    },
-    {
-        id: 'poa-2',
-        city: 'Porto Alegre',
-        state: 'RS',
-        artist: 'Ney Matogrosso — Bloco na Rua',
-        title: 'Ney Matogrosso: Turnê Bloco na Rua',
-        month: 11,
-        day: 27,
-        timeLabel: '21:00',
-        venue: 'Teatro do Bourbon Country',
-        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB / Performance',
-        ticketUrl: 'https://www.uhuu.com'
-    },
-
-    // Fortaleza - CE
-    {
-        id: 'for-1',
-        city: 'Fortaleza',
-        state: 'CE',
-        artist: 'Fagner — 50 Anos de Música',
-        title: 'Raimundo Fagner em Fortaleza',
-        month: 11,
-        day: 19,
-        timeLabel: '21:00',
-        venue: 'Centro de Eventos do Ceará',
-        image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
-        genre: 'MPB / Nordestina',
-        ticketUrl: 'https://www.bilheteriavirtual.com.br'
-    },
-
-    // Manaus - AM
-    {
-        id: 'mao-1',
-        city: 'Manaus',
-        state: 'AM',
-        artist: 'Festival Amazonas de Música Brasileira',
-        title: 'Grande Concerto da Floresta',
-        month: 10,
-        day: 25,
-        timeLabel: '19:00',
-        venue: 'Teatro Amazonas',
-        image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
-        genre: 'Erudita / MPB',
-        ticketUrl: 'https://www.shopingressos.com.br'
+        badge: 'Música Brasileira / MPB',
+        url: 'https://coalafestival.com.br/'
     }
 ];
 
@@ -1833,34 +1482,62 @@ function normalizeSearchStr(str = '') {
 }
 
 app.get('/api/events', (req, res) => {
-    const requestedCity = String(req.query.city || '').trim();
+    const requestedCity = String(req.query.city || 'Brasília').trim();
     const normReqCity = normalizeSearchStr(requestedCity);
+    const state = CITY_UF_MAP[normReqCity] || 'DF';
 
-    // Resolve todos os shows com datas futuras e ordenação cronológica
-    const allResolvedShows = RAW_CONCERT_DATA
-        .map(raw => createUpcomingShow(raw))
-        .sort((a, b) => a.timestamp - b.timestamp);
+    const slug = normReqCity.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const stateLower = state.toLowerCase();
 
-    let filtered = [];
-
-    if (normReqCity) {
-        filtered = allResolvedShows.filter(evt => {
-            const normEvtCity = normalizeSearchStr(evt.city);
-            const normEvtState = normalizeSearchStr(evt.state);
-            return normEvtCity.includes(normReqCity) || normReqCity.includes(normEvtCity) || normEvtState === normReqCity;
-        });
-    }
-
-    // Se a cidade não tiver shows cadastrados, retorna os principais destaques nacionais
-    const isFallback = filtered.length === 0;
-    const finalEvents = isFallback ? allResolvedShows.slice(0, 8) : filtered;
+    const platforms = [
+        {
+            id: 'sympla',
+            name: 'Sympla',
+            badge: 'Shows & Festivais',
+            description: `Agenda completa de shows ao vivo, festivais e eventos musicais em ${requestedCity}`,
+            color: '#00D8A5',
+            url: `https://www.sympla.com.br/eventos/${slug}-${stateLower}/show-musica-festa`
+        },
+        {
+            id: 'eventim',
+            name: 'Eventim Brasil',
+            badge: 'Grandes Turnês & Arenas',
+            description: `Turnês nacionais e internacionais, casas de espetáculo e arenas em ${requestedCity}`,
+            color: '#002E6D',
+            url: `https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(requestedCity)}`
+        },
+        {
+            id: 'bilheteriadigital',
+            name: 'Bilheteria Digital',
+            badge: 'Eventos Locais & Festivais',
+            description: `Shows, festivais regionais e apresentações com venda oficial em ${requestedCity}`,
+            color: '#E63946',
+            url: `https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(requestedCity)}`
+        },
+        {
+            id: 'ticketmaster',
+            name: 'Ticketmaster Brasil',
+            badge: 'Mega Shows Internacionais',
+            description: `Grandes concertos, megafestivais e turnês mundiais no Brasil`,
+            color: '#026CDF',
+            url: `https://www.ticketmaster.com.br/search?q=${encodeURIComponent(requestedCity)}`
+        },
+        {
+            id: 'ingresse',
+            name: 'Ingresse',
+            badge: 'Festas & Música Eletrônica',
+            description: `Festivais conceituais, clubs e música eletrônica em ${requestedCity}`,
+            color: '#FF0055',
+            url: `https://www.ingresse.com/busca?q=${encodeURIComponent(requestedCity)}`
+        }
+    ];
 
     res.json({
         success: true,
-        city: requestedCity || 'Destaques Nacionais',
-        isFallback,
-        count: finalEvents.length,
-        events: finalEvents
+        city: requestedCity,
+        state: state,
+        platforms,
+        festivals: MAJOR_BRAZILIAN_FESTIVALS
     });
 });
 

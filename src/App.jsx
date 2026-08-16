@@ -1475,13 +1475,14 @@ export default function App() {
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
   const [newsFilter, setNewsFilter] = useState("all");
-  const [events, setEvents] = useState([]);
+  const [platforms, setPlatforms] = useState([]);
+  const [festivals, setFestivals] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [selectedCity, setSelectedCity] = useState("Brasília");
+  const [cityState, setCityState] = useState("DF");
   const [cityPickerOpen, setCityPickerOpen] = useState(false);
   const [citySearchInput, setCitySearchInput] = useState("");
-  const [eventsFallbackNotice, setEventsFallbackNotice] = useState(false);
 
   const loadNews = useCallback(async (force = false) => {
     setNewsLoading(true);
@@ -1503,12 +1504,14 @@ export default function App() {
     try {
       const res = await fetch(`/api/events?city=${encodeURIComponent(city)}`);
       const data = await res.json();
-      if (data && data.events) {
-        setEvents(data.events);
-        setEventsFallbackNotice(!!data.isFallback);
+      if (data) {
+        setPlatforms(data.platforms || []);
+        setFestivals(data.festivals || []);
+        if (data.state) setCityState(data.state);
       }
     } catch {
-      setEvents([]);
+      setPlatforms([]);
+      setFestivals([]);
     } finally {
       setEventsLoading(false);
     }
@@ -1521,6 +1524,7 @@ export default function App() {
       if (data && data.city) {
         setUserLocation(data);
         setSelectedCity(data.city);
+        if (data.state) setCityState(data.state);
         loadEventsForCity(data.city);
         return;
       }
@@ -1536,10 +1540,10 @@ export default function App() {
     if (panel === "news" && news.length === 0) {
       loadNews();
     }
-    if (panel === "shows" && events.length === 0) {
+    if (panel === "shows" && platforms.length === 0) {
       loadEventsForCity(selectedCity);
     }
-  }, [panel, news.length, events.length, selectedCity, loadNews, loadEventsForCity]);
+  }, [panel, news.length, platforms.length, loadNews, loadEventsForCity, selectedCity]);
 
   const filteredNews = useMemo(() => {
     if (newsFilter === "all") return news;
@@ -2272,83 +2276,132 @@ export default function App() {
                 <div className="shows-content">
                   <div className="content-heading shows-heading">
                     <div>
-                      <p className="section-kicker">AGENDA DE SHOWS</p>
-                      <h2>Shows & Festivais</h2>
+                      <p className="section-kicker">GUIA OFICIAL DE INGRESSOS</p>
+                      <h2>Shows na sua Cidade</h2>
                     </div>
 
                     <button
                       className="shows-city-selector-btn"
                       onClick={() => setCityPickerOpen(true)}
-                      aria-label="Mudar cidade de shows"
+                      aria-label="Mudar cidade"
                       title="Clique para escolher outra cidade"
                     >
                       <ActionIcon name="location" />
-                      <span className="shows-city-name">{selectedCity}</span>
+                      <span className="shows-city-name">{selectedCity} - {cityState}</span>
                       <ActionIcon name="chevronDown" />
                     </button>
                   </div>
 
-                  {eventsFallbackNotice && (
-                    <div className="shows-fallback-banner">
-                      <span>📍 Sem shows cadastrados especificamente para <b>{selectedCity}</b>. Exibindo principais destaques nacionais:</span>
+                  {track.artist && track.artist !== "Rádio Marinha" && (
+                    <div className="artist-tour-card">
+                      <div className="artist-tour-header">
+                        <span className="artist-tour-tag">NO AR AGORA</span>
+                        <h3 className="artist-tour-title">
+                          Quer ver o show de <b>{track.artist}</b>?
+                        </h3>
+                        <p className="artist-tour-desc">
+                          Consulte ingressos e datas oficiais de turnê nas principais plataformas:
+                        </p>
+                      </div>
+                      <div className="artist-tour-actions">
+                        <a
+                          href={`https://www.sympla.com.br/eventos?s=${encodeURIComponent(track.artist)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="tour-btn tour-sympla"
+                        >
+                          <span>Sympla</span>
+                          <ActionIcon name="external" />
+                        </a>
+                        <a
+                          href={`https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(track.artist)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="tour-btn tour-eventim"
+                        >
+                          <span>Eventim</span>
+                          <ActionIcon name="external" />
+                        </a>
+                        <a
+                          href={`https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(track.artist)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="tour-btn tour-bd"
+                        >
+                          <span>Bilheteria Digital</span>
+                          <ActionIcon name="external" />
+                        </a>
+                      </div>
                     </div>
                   )}
 
-                  {eventsLoading ? (
-                    <div className="content-loading"><span className="spinner" /> Buscando shows em {selectedCity}…</div>
-                  ) : events.length > 0 ? (
-                    <div className="shows-grid">
-                      {events.map((evt) => {
-                        const dateParts = (evt.dateLabel || "").split(" ");
-                        const dayPart = dateParts[0] || "";
-                        const monthPart = dateParts.slice(1).join(" ") || "";
-                        return (
-                          <article className="show-card" key={evt.id}>
-                            <div className="show-badge-date">
-                              <span className="show-badge-day">{dayPart}</span>
-                              <span className="show-badge-month">{monthPart}</span>
-                            </div>
-                            {evt.image && (
-                              <div className="show-cover-wrap">
-                                <img
-                                  src={evt.image}
-                                  alt={evt.artist}
-                                  className="show-cover"
-                                  loading="lazy"
-                                  onError={(e) => {
-                                    if (e.target && e.target.parentElement) {
-                                      e.target.parentElement.style.display = 'none';
-                                    }
-                                  }}
-                                />
-                                <span className="show-genre-tag">{evt.genre}</span>
-                              </div>
-                            )}
-                            <div className="show-details">
-                              <span className="show-city-tag">{evt.city} - {evt.state}</span>
-                              <h3 className="show-title">{evt.title}</h3>
-                              <p className="show-venue">📍 {evt.venue}</p>
-                              <div className="show-footer">
-                                <span className="show-time">🕒 {evt.timeLabel}</span>
-                                <a
-                                  href={evt.ticketUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="show-ticket-btn"
-                                >
-                                  <span>Ingressos</span>
-                                  <ActionIcon name="external" />
-                                </a>
-                              </div>
-                            </div>
-                          </article>
-                        );
-                      })}
+                  <div className="ticket-platforms-section">
+                    <div className="section-title-wrap">
+                      <h3 className="ticket-section-title">Bilheterias Oficiais em {selectedCity}</h3>
+                      <p className="ticket-section-desc">Consulte a programação completa, datas confirmadas e venda oficial em tempo real:</p>
                     </div>
-                  ) : (
-                    <div className="empty-state">
-                      <strong>Nenhum show encontrado</strong>
-                      <p>Clique no botão de localização acima para escolher outra capital ou cidade brasileira.</p>
+
+                    {eventsLoading ? (
+                      <div className="content-loading"><span className="spinner" /> Carregando bilheterias de {selectedCity}…</div>
+                    ) : (
+                      <div className="ticket-platforms-grid">
+                        {platforms.map((plat) => (
+                          <a
+                            href={plat.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="ticket-platform-card"
+                            key={plat.id}
+                          >
+                            <div className="plat-header">
+                              <span className="plat-badge" style={{ backgroundColor: plat.color }}>
+                                {plat.badge}
+                              </span>
+                              <span className="plat-name">{plat.name}</span>
+                            </div>
+                            <p className="plat-desc">{plat.description}</p>
+                            <div className="plat-action">
+                              <span>Ver programação ao vivo</span>
+                              <ActionIcon name="external" />
+                            </div>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {festivals.length > 0 && (
+                    <div className="major-festivals-section">
+                      <div className="section-title-wrap">
+                        <h3 className="ticket-section-title">Grandes Festivais Confirmados no Brasil</h3>
+                        <p className="ticket-section-desc">Sites oficiais e ingressos dos maiores eventos do país:</p>
+                      </div>
+
+                      <div className="festivals-grid">
+                        {festivals.map((fest) => (
+                          <a
+                            href={fest.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="festival-card"
+                            key={fest.id}
+                          >
+                            <div className="fest-img-wrap">
+                              <img src={fest.image} alt={fest.name} loading="lazy" />
+                              <span className="fest-badge">{fest.badge}</span>
+                            </div>
+                            <div className="fest-body">
+                              <h4 className="fest-name">{fest.name}</h4>
+                              <p className="fest-venue">📍 {fest.venue}</p>
+                              <span className="fest-city-tag">{fest.city} - {fest.state}</span>
+                              <div className="fest-link">
+                                <span>Site Oficial</span>
+                                <ActionIcon name="external" />
+                              </div>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
