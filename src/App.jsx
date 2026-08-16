@@ -2248,7 +2248,9 @@ export default function App() {
                                 {item.title}
                               </a>
                             </h3>
-                            <p className="news-summary">{item.summary}</p>
+                            <p className="news-summary">
+                              {item.summary ? item.summary.replace(/\]\]>|\]>/g, '').replace(/^[\s\]>]+/, '').trim() : ''}
+                            </p>
                             <a href={item.link} target="_blank" rel="noopener noreferrer" className="news-read-more">
                               <span>Ler matéria completa</span>
                               <ActionIcon name="external" />

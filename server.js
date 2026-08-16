@@ -1203,6 +1203,8 @@ const NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos
 
 function decodeHtmlEntities(str = '') {
     return str
+        .replace(/<!\[CDATA\[/gi, '')
+        .replace(/\]\]>/gi, '')
         .replace(/&#8216;|&#8217;|&lsquo;|&rsquo;/g, "'")
         .replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"')
         .replace(/&#8211;|&#8212;|&ndash;|&mdash;/g, '—')
@@ -1218,6 +1220,8 @@ function decodeHtmlEntities(str = '') {
             return String.fromCharCode(num);
         })
         .replace(/<[^>]*>/g, '')
+        .replace(/[\]>]+/g, '')
+        .replace(/^[\s\]>]+/, '')
         .trim();
 }
 
