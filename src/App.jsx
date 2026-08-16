@@ -2293,43 +2293,58 @@ export default function App() {
 
                   {track.artist && track.artist !== "Rádio Marinha" && (
                     <div className="artist-tour-card">
-                      <div className="artist-tour-header">
-                        <span className="artist-tour-tag">NO AR AGORA</span>
-                        <h3 className="artist-tour-title">
-                          Quer ver o show de <b>{track.artist}</b>?
-                        </h3>
-                        <p className="artist-tour-desc">
-                          Consulte ingressos e datas oficiais de turnê nas principais plataformas:
-                        </p>
-                      </div>
-                      <div className="artist-tour-actions">
-                        <a
-                          href={`https://www.sympla.com.br/eventos?s=${encodeURIComponent(track.artist)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="tour-btn tour-sympla"
-                        >
-                          <span>Sympla</span>
-                          <ActionIcon name="external" />
-                        </a>
-                        <a
-                          href={`https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(track.artist)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="tour-btn tour-eventim"
-                        >
-                          <span>Eventim</span>
-                          <ActionIcon name="external" />
-                        </a>
-                        <a
-                          href={`https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(track.artist)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="tour-btn tour-bd"
-                        >
-                          <span>Bilheteria Digital</span>
-                          <ActionIcon name="external" />
-                        </a>
+                      <div className="artist-tour-inner">
+                        <div className="artist-tour-media">
+                          <img
+                            src={effectiveCover}
+                            alt={track.artist}
+                            className="artist-tour-thumb"
+                            onError={(e) => {
+                              if (e.target) e.target.src = FALLBACK_COVER;
+                            }}
+                          />
+                        </div>
+                        <div className="artist-tour-content">
+                          <div className="artist-tour-live-pill">
+                            <span className="live-indicator-dot" />
+                            <span>NO AR NA RÁDIO</span>
+                          </div>
+                          <h3 className="artist-tour-title">
+                            Turnê de <b>{track.artist}</b>
+                          </h3>
+                          <p className="artist-tour-desc">
+                            Pesquise ingressos oficiais e datas de apresentações ao vivo:
+                          </p>
+                          <div className="artist-tour-actions">
+                            <a
+                              href={`https://www.sympla.com.br/eventos?s=${encodeURIComponent(track.artist)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="tour-btn tour-sympla"
+                            >
+                              <span>Sympla</span>
+                              <ActionIcon name="external" />
+                            </a>
+                            <a
+                              href={`https://www.eventim.com.br/search/?searchterm=${encodeURIComponent(track.artist)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="tour-btn tour-eventim"
+                            >
+                              <span>Eventim</span>
+                              <ActionIcon name="external" />
+                            </a>
+                            <a
+                              href={`https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(track.artist)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="tour-btn tour-bd"
+                            >
+                              <span>Bilheteria Digital</span>
+                              <ActionIcon name="external" />
+                            </a>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -2352,15 +2367,20 @@ export default function App() {
                             className="ticket-platform-card"
                             key={plat.id}
                           >
-                            <div className="plat-header">
-                              <span className="plat-badge" style={{ backgroundColor: plat.color }}>
-                                {plat.badge}
-                              </span>
-                              <span className="plat-name">{plat.name}</span>
+                            <div className="plat-top-row">
+                              <div className="plat-brand-badge" style={{ backgroundColor: plat.color }}>
+                                {plat.name.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="plat-info-col">
+                                <span className="plat-name">{plat.name}</span>
+                                <span className="plat-badge-pill" style={{ color: plat.color, borderColor: `${plat.color}40` }}>
+                                  {plat.badge}
+                                </span>
+                              </div>
                             </div>
                             <p className="plat-desc">{plat.description}</p>
-                            <div className="plat-action">
-                              <span>Ver programação ao vivo</span>
+                            <div className="plat-cta">
+                              <span>Consultar Ingressos</span>
                               <ActionIcon name="external" />
                             </div>
                           </a>
