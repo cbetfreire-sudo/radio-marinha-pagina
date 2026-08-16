@@ -1239,10 +1239,16 @@ async function fetchMusicNews() {
             url: 'https://rollingstone.com.br/feed/'
         },
         {
-            source: 'Billboard Brasil',
+            source: 'POPline',
+            badge: 'POPline',
+            tagColor: '#ec4899',
+            url: 'https://portalpopline.com.br/feed/'
+        },
+        {
+            source: 'Billboard',
             badge: 'Billboard',
             tagColor: '#0284c7',
-            url: 'https://billboard.com.br/feed/'
+            url: 'https://www.billboard.com/feed/'
         },
         {
             source: 'G1 Música',
