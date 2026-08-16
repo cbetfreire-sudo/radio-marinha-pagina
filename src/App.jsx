@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 
 const STREAM_URL = "https://stm0.inovativa.net/listen/radiomarinha/radio.mp3";
