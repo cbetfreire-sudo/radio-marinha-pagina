@@ -1298,13 +1298,20 @@ async function fetchMusicNews() {
                 const rawDesc = descMatch ? descMatch[1] : '';
                 const link = linkMatch ? linkMatch[1].trim() : '#';
                 const pubDate = pubDateMatch ? new Date(pubDateMatch[1].trim()) : new Date();
+                const pubTime = !isNaN(pubDate.getTime()) ? pubDate.getTime() : Date.now();
+
+                // Filtro de recência: descarta matérias com mais de 45 dias ou de anos anteriores
+                const ageDays = (now - pubTime) / (1000 * 60 * 60 * 24);
+                if (ageDays > 45 || ageDays < -1) {
+                    continue;
+                }
 
                 const cleanTitle = decodeHtmlEntities(rawTitle);
                 const cleanDesc = decodeHtmlEntities(rawDesc).slice(0, 180);
 
                 if (cleanTitle && cleanTitle.length > 5) {
                     results.push({
-                        id: `${feed.badge}-${count}-${pubDate.getTime()}`,
+                        id: `${feed.badge}-${count}-${pubTime}`,
                         title: cleanTitle,
                         summary: cleanDesc ? (cleanDesc.length >= 180 ? `${cleanDesc}...` : cleanDesc) : 'Clique para conferir a matéria completa.',
                         link,
@@ -1312,8 +1319,8 @@ async function fetchMusicNews() {
                         source: feed.source,
                         badge: feed.badge,
                         tagColor: feed.tagColor,
-                        pubDate: !isNaN(pubDate.getTime()) ? pubDate.toISOString() : new Date().toISOString(),
-                        timestamp: !isNaN(pubDate.getTime()) ? pubDate.getTime() : Date.now()
+                        pubDate: new Date(pubTime).toISOString(),
+                        timestamp: pubTime
                     });
                     count++;
                 }
@@ -1400,17 +1407,47 @@ app.get('/api/location', async (req, res) => {
     }
 });
 
-// ── Agenda de Próximos Shows no Brasil ───────────────────────
-const BRAZIL_CONCERT_SCHEDULE = [
+// ── Agenda Dinâmica de Shows e Festivais no Brasil ───────────
+function createUpcomingShow({ id, city, state, artist, title, month, day, timeLabel = '21:00', venue, image, genre, ticketUrl }) {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    let showDate = new Date(currentYear, month - 1, day, 21, 0, 0);
+
+    // Se a data já passou no ano atual, projeta para o próximo ano
+    if (showDate.getTime() < now.getTime() - (24 * 60 * 60 * 1000)) {
+        showDate = new Date(currentYear + 1, month - 1, day, 21, 0, 0);
+    }
+
+    const monthsAbbr = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const pad = (n) => String(n).padStart(2, '0');
+
+    return {
+        id,
+        city,
+        state,
+        artist,
+        title,
+        date: showDate.toISOString(),
+        timestamp: showDate.getTime(),
+        dateLabel: `${pad(day)} ${monthsAbbr[showDate.getMonth()]} ${showDate.getFullYear()}`,
+        timeLabel,
+        venue,
+        image,
+        genre,
+        ticketUrl
+    };
+}
+
+const RAW_CONCERT_DATA = [
     // Brasília - DF
     {
         id: 'bsb-1',
         city: 'Brasília',
         state: 'DF',
         artist: 'Gilberto Gil — Turnê Tempo Rei',
-        title: 'Gilberto Gil: A Última Grande Turnê',
-        date: '2025-05-31T21:00:00.000Z',
-        dateLabel: '31 Mai 2025',
+        title: 'Gilberto Gil: A Grande Turnê Tempo Rei',
+        month: 10,
+        day: 24,
         timeLabel: '21:00',
         venue: 'Arena BRB Mané Garrincha',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
@@ -1423,8 +1460,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'DF',
         artist: 'Liniker — Caju Tour',
         title: 'Liniker: Turnê do Álbum CAJU',
-        date: '2025-04-12T20:30:00.000Z',
-        dateLabel: '12 Abr 2025',
+        month: 11,
+        day: 14,
         timeLabel: '20:30',
         venue: 'Centro de Convenções Ulysses Guimarães',
         image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
@@ -1435,10 +1472,10 @@ const BRAZIL_CONCERT_SCHEDULE = [
         id: 'bsb-3',
         city: 'Brasília',
         state: 'DF',
-        artist: 'Festival Na Praia 2025',
-        title: 'Festival Na Praia Brasília — Edição Especial',
-        date: '2025-07-05T18:00:00.000Z',
-        dateLabel: '05 Jul a 14 Set 2025',
+        artist: 'Festival Na Praia Brasília',
+        title: 'Festival Na Praia — Edição Especial',
+        month: 9,
+        day: 12,
         timeLabel: '18:00',
         venue: 'Setor de Clubes Esportivos Sul',
         image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
@@ -1451,8 +1488,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'DF',
         artist: 'Nando Reis & Os Infernais',
         title: 'Nando Reis: Uma Estrela Misteriosa',
-        date: '2025-06-21T21:30:00.000Z',
-        dateLabel: '21 Jun 2025',
+        month: 10,
+        day: 10,
         timeLabel: '21:30',
         venue: 'Auditório Master — Ulysses Guimarães',
         image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
@@ -1464,9 +1501,9 @@ const BRAZIL_CONCERT_SCHEDULE = [
         city: 'Brasília',
         state: 'DF',
         artist: 'Capital Inicial — 40 Anos',
-        title: 'Capital Inicial: Acústico Especial em Casa',
-        date: '2025-08-16T22:00:00.000Z',
-        dateLabel: '16 Ago 2025',
+        title: 'Capital Inicial: Especial em Casa',
+        month: 12,
+        day: 5,
         timeLabel: '22:00',
         venue: 'Arena BRB Nilson Nelson',
         image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
@@ -1481,8 +1518,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'RJ',
         artist: 'Caetano Veloso & Maria Bethânia',
         title: 'Caetano & Bethânia — Turnê Histórica',
-        date: '2025-03-22T21:00:00.000Z',
-        dateLabel: '22 Mar 2025',
+        month: 11,
+        day: 28,
         timeLabel: '21:00',
         venue: 'Farmasi Arena — Barra da Tijuca',
         image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
@@ -1494,9 +1531,9 @@ const BRAZIL_CONCERT_SCHEDULE = [
         city: 'Rio de Janeiro',
         state: 'RJ',
         artist: 'Djavan — Turnê D',
-        title: 'Djavan ao Vivo no Rio',
-        date: '2025-05-17T21:30:00.000Z',
-        dateLabel: '17 Mai 2025',
+        title: 'Djavan ao Vivo no Rio de Janeiro',
+        month: 10,
+        day: 17,
         timeLabel: '21:30',
         venue: 'Vivo Rio — Aterro do Flamengo',
         image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
@@ -1509,8 +1546,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'RJ',
         artist: 'Zeca Pagodinho — 40 Anos de Samba',
         title: 'Zeca Pagodinho no Circo Voador',
-        date: '2025-06-07T22:00:00.000Z',
-        dateLabel: '07 Jun 2025',
+        month: 12,
+        day: 12,
         timeLabel: '22:00',
         venue: 'Circo Voador — Lapa',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
@@ -1523,8 +1560,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'RJ',
         artist: 'Marisa Monte — Portas Tour',
         title: 'Marisa Monte no Qualistage',
-        date: '2025-07-19T21:00:00.000Z',
-        dateLabel: '19 Jul 2025',
+        month: 11,
+        day: 7,
         timeLabel: '21:00',
         venue: 'Qualistage — Via Parque',
         image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
@@ -1537,10 +1574,10 @@ const BRAZIL_CONCERT_SCHEDULE = [
         id: 'sp-1',
         city: 'São Paulo',
         state: 'SP',
-        artist: 'Lollapalooza Brasil 2025',
-        title: 'Lollapalooza Brasil 2025',
-        date: '2025-03-28T12:00:00.000Z',
-        dateLabel: '28 a 30 Mar 2025',
+        artist: 'Lollapalooza Brasil',
+        title: 'Lollapalooza Brasil — Autódromo de Interlagos',
+        month: 3,
+        day: 27,
         timeLabel: '12:00',
         venue: 'Autódromo de Interlagos',
         image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
@@ -1553,8 +1590,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'SP',
         artist: 'Gilberto Gil — Turnê Tempo Rei',
         title: 'Gilberto Gil em São Paulo',
-        date: '2025-04-26T20:30:00.000Z',
-        dateLabel: '26 Abr 2025',
+        month: 11,
+        day: 21,
         timeLabel: '20:30',
         venue: 'Allianz Parque',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
@@ -1567,8 +1604,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'SP',
         artist: 'Sepultura — Celebrating Life Through Death',
         title: 'Sepultura: Turnê de Despedida Mundial',
-        date: '2025-09-06T21:00:00.000Z',
-        dateLabel: '06 Set 2025',
+        month: 10,
+        day: 31,
         timeLabel: '21:00',
         venue: 'Espaço Unimed — Barra Funda',
         image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
@@ -1581,8 +1618,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'SP',
         artist: 'Jão — Superturnê',
         title: 'Jão: A Grande Superturnê',
-        date: '2025-05-10T21:00:00.000Z',
-        dateLabel: '10 Mai 2025',
+        month: 12,
+        day: 19,
         timeLabel: '21:00',
         venue: 'Allianz Parque',
         image: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
@@ -1596,9 +1633,9 @@ const BRAZIL_CONCERT_SCHEDULE = [
         city: 'Salvador',
         state: 'BA',
         artist: 'Gilberto Gil — Turnê Tempo Rei',
-        title: 'Gilberto Gil: Abertura Oficial Tempo Rei em Salvador',
-        date: '2025-03-15T19:00:00.000Z',
-        dateLabel: '15 Mar 2025',
+        title: 'Gilberto Gil: Tempo Rei em Salvador',
+        month: 10,
+        day: 15,
         timeLabel: '19:00',
         venue: 'Casa de Apostas Arena Fonte Nova',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
@@ -1611,8 +1648,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'BA',
         artist: 'BaianaSystem — Navio Pirata',
         title: 'BaianaSystem: O Baile Especial',
-        date: '2025-04-19T21:00:00.000Z',
-        dateLabel: '19 Abr 2025',
+        month: 11,
+        day: 8,
         timeLabel: '21:00',
         venue: 'Concha Acústica do TCA',
         image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
@@ -1625,8 +1662,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'BA',
         artist: 'Maria Rita — Samba da Maria',
         title: 'Maria Rita: Samba da Maria em Salvador',
-        date: '2025-06-14T20:00:00.000Z',
-        dateLabel: '14 Jun 2025',
+        month: 12,
+        day: 6,
         timeLabel: '20:00',
         venue: 'Concha Acústica do Teatro Castro Alves',
         image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
@@ -1640,9 +1677,9 @@ const BRAZIL_CONCERT_SCHEDULE = [
         city: 'Belo Horizonte',
         state: 'MG',
         artist: 'Milton Nascimento & Esperanza Spalding',
-        title: 'Milton + Esperanza — Encontro Único',
-        date: '2025-05-24T21:00:00.000Z',
-        dateLabel: '24 Mai 2025',
+        title: 'Milton + Esperanza — Encontro Especial',
+        month: 11,
+        day: 13,
         timeLabel: '21:00',
         venue: 'Arena Hall (Antigo Chevrolet Hall)',
         image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
@@ -1653,10 +1690,10 @@ const BRAZIL_CONCERT_SCHEDULE = [
         id: 'bh-2',
         city: 'Belo Horizonte',
         state: 'MG',
-        artist: 'Skank — Encontros Acústicos com Samuel Rosa',
-        title: 'Samuel Rosa: Tour Solo e Clássicos do Skank',
-        date: '2025-07-12T21:30:00.000Z',
-        dateLabel: '12 Jul 2025',
+        artist: 'Samuel Rosa — Tour Solo',
+        title: 'Samuel Rosa: Tour Solo e Clássicos',
+        month: 10,
+        day: 23,
         timeLabel: '21:30',
         venue: 'Palácio das Artes',
         image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
@@ -1671,8 +1708,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'PR',
         artist: 'Caetano Veloso & Maria Bethânia',
         title: 'Caetano & Bethânia na Pedreira',
-        date: '2025-04-05T20:00:00.000Z',
-        dateLabel: '05 Abr 2025',
+        month: 12,
+        day: 11,
         timeLabel: '20:00',
         venue: 'Pedreira Paulo Leminski',
         image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
@@ -1685,8 +1722,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'PR',
         artist: 'Festival Prime Rock Brasil Curitiba',
         title: 'Prime Rock Brasil: Os Clássicos do Rock Nacional',
-        date: '2025-11-22T14:00:00.000Z',
-        dateLabel: '22 Nov 2025',
+        month: 11,
+        day: 22,
         timeLabel: '14:00',
         venue: 'Pedreira Paulo Leminski',
         image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=600&auto=format&fit=crop&q=80',
@@ -1701,8 +1738,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'PE',
         artist: 'Alceu Valença & Orquestra Ouro Preto',
         title: 'Alceu Valença: Valencianas II',
-        date: '2025-06-28T21:00:00.000Z',
-        dateLabel: '28 Jun 2025',
+        month: 11,
+        day: 20,
         timeLabel: '21:00',
         venue: 'Classic Hall — Olinda/Recife',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
@@ -1715,8 +1752,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'PE',
         artist: 'Lenine — Turnê Rizoma',
         title: 'Lenine & Bruno Giorgi em Recife',
-        date: '2025-05-03T20:30:00.000Z',
-        dateLabel: '03 Mai 2025',
+        month: 10,
+        day: 9,
         timeLabel: '20:30',
         venue: 'Teatro Guararapes',
         image: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80',
@@ -1729,10 +1766,10 @@ const BRAZIL_CONCERT_SCHEDULE = [
         id: 'poa-1',
         city: 'Porto Alegre',
         state: 'RS',
-        artist: 'Humberto Gessinger — Quatro Cantos de um Mundo Redondo',
+        artist: 'Humberto Gessinger — Turnê Especial',
         title: 'Humberto Gessinger ao Vivo em Porto Alegre',
-        date: '2025-05-10T21:00:00.000Z',
-        dateLabel: '10 Mai 2025',
+        month: 10,
+        day: 16,
         timeLabel: '21:00',
         venue: 'Auditório Araújo Vianna',
         image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80',
@@ -1745,8 +1782,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'RS',
         artist: 'Ney Matogrosso — Bloco na Rua',
         title: 'Ney Matogrosso: Turnê Bloco na Rua',
-        date: '2025-08-09T21:00:00.000Z',
-        dateLabel: '09 Ago 2025',
+        month: 11,
+        day: 27,
         timeLabel: '21:00',
         venue: 'Teatro do Bourbon Country',
         image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
@@ -1761,8 +1798,8 @@ const BRAZIL_CONCERT_SCHEDULE = [
         state: 'CE',
         artist: 'Fagner — 50 Anos de Música',
         title: 'Raimundo Fagner em Fortaleza',
-        date: '2025-06-20T21:00:00.000Z',
-        dateLabel: '20 Jun 2025',
+        month: 11,
+        day: 19,
         timeLabel: '21:00',
         venue: 'Centro de Eventos do Ceará',
         image: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
@@ -1775,10 +1812,10 @@ const BRAZIL_CONCERT_SCHEDULE = [
         id: 'mao-1',
         city: 'Manaus',
         state: 'AM',
-        artist: 'Festival Amazonas de Ópera & Música Brasileira',
+        artist: 'Festival Amazonas de Música Brasileira',
         title: 'Grande Concerto da Floresta',
-        date: '2025-05-18T19:00:00.000Z',
-        dateLabel: '18 Mai 2025',
+        month: 10,
+        day: 25,
         timeLabel: '19:00',
         venue: 'Teatro Amazonas',
         image: 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=600&auto=format&fit=crop&q=80',
@@ -1799,10 +1836,15 @@ app.get('/api/events', (req, res) => {
     const requestedCity = String(req.query.city || '').trim();
     const normReqCity = normalizeSearchStr(requestedCity);
 
+    // Resolve todos os shows com datas futuras e ordenação cronológica
+    const allResolvedShows = RAW_CONCERT_DATA
+        .map(raw => createUpcomingShow(raw))
+        .sort((a, b) => a.timestamp - b.timestamp);
+
     let filtered = [];
 
     if (normReqCity) {
-        filtered = BRAZIL_CONCERT_SCHEDULE.filter(evt => {
+        filtered = allResolvedShows.filter(evt => {
             const normEvtCity = normalizeSearchStr(evt.city);
             const normEvtState = normalizeSearchStr(evt.state);
             return normEvtCity.includes(normReqCity) || normReqCity.includes(normEvtCity) || normEvtState === normReqCity;
@@ -1811,7 +1853,7 @@ app.get('/api/events', (req, res) => {
 
     // Se a cidade não tiver shows cadastrados, retorna os principais destaques nacionais
     const isFallback = filtered.length === 0;
-    const finalEvents = isFallback ? BRAZIL_CONCERT_SCHEDULE.slice(0, 8) : filtered;
+    const finalEvents = isFallback ? allResolvedShows.slice(0, 8) : filtered;
 
     res.json({
         success: true,
