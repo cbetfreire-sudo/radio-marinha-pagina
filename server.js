@@ -841,6 +841,19 @@ async function fetchDeezerArtistImage(artistName) {
     return null;
 }
 
+function isMatchingWikiTitle(pageTitle, targetName) {
+    if (!pageTitle || !targetName) return false;
+    const cleanPage = normalizeMetadata(pageTitle.replace(/\s*\([^)]*\)/g, ''));
+    const cleanTarget = normalizeMetadata(targetName.replace(/\s*\([^)]*\)/g, ''));
+    if (!cleanPage || !cleanTarget) return false;
+    if (cleanPage === cleanTarget) return true;
+    if (cleanPage.includes(cleanTarget) || cleanTarget.includes(cleanPage)) return true;
+    const dist = getLevenshteinDistance(cleanPage, cleanTarget);
+    const maxLen = Math.max(cleanPage.length, cleanTarget.length);
+    if (maxLen > 5 && dist <= 2) return true;
+    return false;
+}
+
 async function fetchWikipediaArtist(artistName) {
     const variants = getArtistSearchVariants(artistName);
     if (!variants.length) return null;
@@ -859,13 +872,15 @@ async function fetchWikipediaArtist(artistName) {
             if (sumRes.ok) {
                 const sumData = await sumRes.json();
                 if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
-                    return {
-                        name: sumData.title || query,
-                        biography: sumData.extract,
-                        image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
-                        description: sumData.description || null,
-                        source: 'Wikipédia'
-                    };
+                    if (isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) {
+                        return {
+                            name: sumData.title || query,
+                            biography: sumData.extract,
+                            image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
+                            description: sumData.description || null,
+                            source: 'Wikipédia'
+                        };
+                    }
                 }
             }
         } catch {}
@@ -881,6 +896,10 @@ async function fetchWikipediaArtist(artistName) {
                 const ptSearchData = await ptSearchRes.json();
                 const searchResults = ptSearchData.query?.search || [];
                 for (const item of searchResults.slice(0, 3)) {
+                    if (!isMatchingWikiTitle(item.title, query) && !isMatchingWikiTitle(item.title, artistName)) {
+                        continue;
+                    }
+
                     const pageSummaryUrl = `https://pt.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(item.title.replace(/\s+/g, '_'))}`;
                     const sumRes = await fetchWithTimeout(pageSummaryUrl, {
                         headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
@@ -889,13 +908,15 @@ async function fetchWikipediaArtist(artistName) {
                     if (sumRes.ok) {
                         const sumData = await sumRes.json();
                         if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
-                            return {
-                                name: sumData.title || query,
-                                biography: sumData.extract,
-                                image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
-                                description: sumData.description || null,
-                                source: 'Wikipédia'
-                            };
+                            if (isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) {
+                                return {
+                                    name: sumData.title || query,
+                                    biography: sumData.extract,
+                                    image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
+                                    description: sumData.description || null,
+                                    source: 'Wikipédia'
+                                };
+                            }
                         }
                     }
                 }
@@ -915,6 +936,10 @@ async function fetchWikipediaArtist(artistName) {
                 const enSearchData = await enSearchRes.json();
                 const titles = enSearchData[1] || [];
                 for (const title of titles.slice(0, 3)) {
+                    if (!isMatchingWikiTitle(title, query) && !isMatchingWikiTitle(title, artistName)) {
+                        continue;
+                    }
+
                     const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/\s+/g, '_'))}`;
                     const sumRes = await fetchWithTimeout(summaryUrl, {
                         headers: { 'User-Agent': WIKI_USER_AGENT, 'Accept': 'application/json' }
@@ -923,13 +948,15 @@ async function fetchWikipediaArtist(artistName) {
                     if (sumRes.ok) {
                         const sumData = await sumRes.json();
                         if (sumData.extract && sumData.extract.length > 40 && sumData.type !== 'disambiguation') {
-                            return {
-                                name: sumData.title || query,
-                                biography: sumData.extract,
-                                image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
-                                description: sumData.description || null,
-                                source: 'Wikipédia (EN)'
-                            };
+                            if (isMatchingWikiTitle(sumData.title, query) || isMatchingWikiTitle(sumData.title, artistName)) {
+                                return {
+                                    name: sumData.title || query,
+                                    biography: sumData.extract,
+                                    image: sumData.thumbnail?.source || sumData.originalimage?.source || null,
+                                    description: sumData.description || null,
+                                    source: 'Wikipédia (EN)'
+                                };
+                            }
                         }
                     }
                 }
