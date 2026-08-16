@@ -2407,7 +2407,7 @@ export default function App() {
                               </div>
                               <div className="plat-info-col">
                                 <span className="plat-name">{plat.name}</span>
-                                <span className="plat-badge-pill" style={{ color: plat.color, borderColor: `${plat.color}40`, backgroundColor: `${plat.color}15` }}>
+                                <span className="plat-badge-pill">
                                   {plat.badge}
                                 </span>
                               </div>
