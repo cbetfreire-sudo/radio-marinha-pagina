@@ -1254,7 +1254,7 @@ async function fetchMusicNews() {
             source: 'G1 Música',
             badge: 'G1 Música',
             tagColor: '#ea580c',
-            url: 'https://g1.globo.com/rss/g1/musica/'
+            url: 'https://g1.globo.com/rss/g1/pop-arte/musica/'
         }
     ];
 
