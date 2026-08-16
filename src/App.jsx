@@ -2334,15 +2334,6 @@ export default function App() {
                               <span>Eventim</span>
                               <ActionIcon name="external" />
                             </a>
-                            <a
-                              href={`https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(track.artist.split(/,| e | feat\.? | ft\.? | part\.? | com /i)[0].trim())}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="tour-btn tour-bd"
-                            >
-                              <span>Bilheteria Digital</span>
-                              <ActionIcon name="external" />
-                            </a>
                           </div>
                         </div>
                       </div>

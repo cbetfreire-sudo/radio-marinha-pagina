@@ -1542,7 +1542,7 @@ app.get('/api/events', (req, res) => {
             badge: 'Eventos Locais & Festivais',
             description: `Shows, festivais regionais e apresentações com venda oficial em ${requestedCity}`,
             color: '#E63946',
-            url: `https://www.bilheteriadigital.com/busca?q=${encodeURIComponent(requestedCity)}`
+            url: 'https://www.bilheteriadigital.com/'
         },
         {
             id: 'ticketmaster',
