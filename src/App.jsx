@@ -2210,8 +2210,7 @@ export default function App() {
                   <div className="news-filter-chips" role="group" aria-label="Filtrar por portal">
                     <button className={newsFilter === "all" ? "active" : ""} onClick={() => setNewsFilter("all")}>Todas</button>
                     <button className={newsFilter === "Rolling Stone" ? "active" : ""} onClick={() => setNewsFilter("Rolling Stone")}>Rolling Stone</button>
-                    <button className={newsFilter === "POPline" ? "active" : ""} onClick={() => setNewsFilter("POPline")}>POPline</button>
-                    <button className={newsFilter === "Billboard" ? "active" : ""} onClick={() => setNewsFilter("Billboard")}>Billboard</button>
+                    <button className={newsFilter === "Billboard" ? "active" : ""} onClick={() => setNewsFilter("Billboard")}>Billboard(Internacional)</button>
                     <button className={newsFilter === "G1 Música" ? "active" : ""} onClick={() => setNewsFilter("G1 Música")}>G1</button>
                   </div>
 
