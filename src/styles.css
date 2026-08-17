@@ -48,8 +48,23 @@
   font-synthesis: none;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  height: 100%;
+  background: var(--navy-900);
+}
 button, input { font: inherit; }
 button { color: inherit; cursor: pointer; }
 button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400); outline-offset: 3px; }
@@ -60,12 +75,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
   --navy: var(--navy-900);
   position: relative;
   isolation: isolate;
-  min-height: 100svh;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   overflow: hidden;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   padding: 20px;
   background: var(--navy-900);
+  box-sizing: border-box;
 }
 
 .ambient {
@@ -84,9 +103,15 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: none;
-  max-height: calc(100svh - 40px);
-  overflow: auto;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  flex: 1 1 0%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  overflow: hidden;
+  box-sizing: border-box;
   border: 1px solid var(--border-medium);
   border-radius: 24px;
   background: linear-gradient(145deg, rgba(21, 42, 71, 0.28), rgba(11, 20, 38, 0.32));
@@ -104,8 +129,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 20px clamp(22px, 3vw, 42px);
+  padding: clamp(10px, 1.4vh, 18px) clamp(22px, 3vw, 42px);
   border-color: var(--border-subtle);
+  flex-shrink: 0;
 }
 .topbar {
   border-bottom: 1px solid var(--border-subtle);
@@ -560,7 +586,13 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
 .volume-control output { color: var(--mist); font-size: .72rem; text-align: right; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); }
 
 /* ── Content Panel & Tabs ────────────────────────────────── */
-.content-panel { justify-content: stretch; padding-top: clamp(36px, 5vw, 72px); padding-bottom: clamp(36px, 5vw, 72px); }
+.content-panel {
+  justify-content: stretch;
+  padding: clamp(14px, 1.8vh, 26px) clamp(18px, 2.5vw, 36px);
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
 
 .tabs {
   display: grid;
@@ -574,6 +606,7 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   backdrop-filter: blur(8px);
   overflow-x: auto;
   scrollbar-width: none;
+  flex-shrink: 0;
 }
 .tabs::-webkit-scrollbar { display: none; }
 .tabs button {
@@ -598,10 +631,11 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
 
 .tab-content {
   position: relative;
-  flex: 1;
-  min-height: 540px;
-  margin-top: 14px;
-  padding: 30px 32px;
+  flex: 1 1 0%;
+  min-height: 0;
+  height: 100%;
+  margin-top: 10px;
+  padding: clamp(16px, 2vh, 24px) clamp(18px, 2vw, 28px);
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
@@ -609,6 +643,8 @@ h1 { max-width: 100%; margin: 0 auto; font-size: clamp(1.4rem, 2vw, 2.3rem); lin
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 16px 45px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
 }
 
 .tab-content h2 { margin: 0 0 8px; font-size: 1rem; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
@@ -1931,14 +1967,15 @@ footer {
 
 /* ── Portrait & Narrow Screens ───────────────────────────── */
 @media (max-width: 920px), (orientation: portrait) {
-  .app { padding: 16px; min-height: 100svh; height: auto; }
-  .shell { width: 100%; max-width: 760px; height: auto; max-height: none; overflow: visible; border-radius: 22px; }
-  .layout { display: flex; flex-direction: column; height: auto; min-height: 0; overflow: visible; }
-  .hero { display: flex; flex-direction: column; min-width: 0; gap: 16px; padding: 24px 20px; overflow: visible; height: auto; }
-  .cover-wrap { width: min(60vw, 280px); max-width: 280px; }
+  html, body, #root { height: 100%; overflow: hidden; }
+  .app { padding: 20px; width: 100%; height: 100%; max-width: 100%; max-height: 100%; overflow: hidden; }
+  .shell { width: 100%; height: 100%; max-width: none; max-height: 100%; flex: 1 1 0%; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border-radius: 22px; }
+  .layout { display: flex; flex-direction: column; height: 100%; min-height: 0; overflow-y: auto; }
+  .hero { display: flex; flex-direction: column; min-width: 0; gap: 14px; padding: 20px; overflow-y: visible; height: auto; flex-shrink: 0; }
+  .cover-wrap { width: min(45vw, 220px); max-width: 220px; }
   .track-copy { width: 100%; align-self: center; text-align: center; }
-  .track-copy h1 { margin-inline: auto; font-size: clamp(1.8rem, 6.5vw, 2.8rem); }
-  .track-copy .artist { max-width: 620px; margin-inline: auto; margin-top: 8px; }
+  .track-copy h1 { margin-inline: auto; font-size: clamp(1.6rem, 5.5vw, 2.4rem); }
+  .track-copy .artist { max-width: 620px; margin-inline: auto; margin-top: 6px; }
   .program-now { justify-content: center; }
   .main-controls { justify-content: center; align-self: center; width: 100%; margin-top: 4px; }
   .volume-control { width: 100%; max-width: 500px; align-self: center; }
@@ -1946,18 +1983,19 @@ footer {
   .quick-actions { width: 100%; max-width: 500px; align-self: center; margin-top: 8px; }
   .hero > .message { width: 100%; text-align: center; }
   .timer-menu { right: 50%; bottom: 90px; transform: translateX(50%); width: min(360px, calc(100vw - 40px)); }
-  .player-panel { min-width: 0; width: 100%; border-left: 0; border-top: 1px solid var(--border-subtle); padding: 24px 20px; height: auto; overflow: visible; }
+  .player-panel { min-width: 0; width: 100%; border-left: 0; border-top: 1px solid var(--border-subtle); padding: 20px; height: auto; overflow: visible; flex: 1 0 auto; }
   .tabs, .tab-content { width: 100%; max-width: 100%; }
-  .tab-content { min-height: 400px; height: auto; }
-  .lyrics-scroll { height: min(50vh, 380px); }
-  .biography { height: min(45vh, 320px); }
-  .content-loading, .empty-state { min-height: 300px; }
+  .tab-content { min-height: 380px; height: auto; }
+  .lyrics-scroll { height: min(45vh, 340px); }
+  .biography { height: min(40vh, 300px); }
+  .content-loading, .empty-state { min-height: 260px; }
 }
 
 /* ── Landscape (Horizontal Displays) ─────────────────────── */
 @media (min-width: 921px) and (orientation: landscape) {
-  .app { padding: 20px; height: 100svh; overflow: hidden; }
-  .shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: calc(100svh - 40px); max-width: 1540px; margin: 0 auto; overflow: hidden; }
+  html, body, #root { height: 100%; overflow: hidden; }
+  .app { padding: 20px; width: 100%; height: 100%; max-width: 100%; max-height: 100%; overflow: hidden; }
+  .shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; width: 100%; max-width: none; max-height: 100%; margin: 0; overflow: hidden; flex: 1 1 0%; min-height: 0; }
   .topbar { padding-block: 10px; flex-shrink: 0; }
   .brand-logo { width: 38px; height: 38px; }
   .radio-brand-logo { width: 118px; height: 58px; }
@@ -1998,17 +2036,17 @@ footer {
   .quick-actions button > span:last-child { font-size: .64rem; margin-top: 4px; font-weight: 700; }
   .content-panel { min-height: 0; height: 100%; padding: clamp(14px, 1.8vh, 26px) clamp(18px, 2.5vw, 36px); overflow: hidden; }
   .tabs { flex: 0 0 auto; }
-  .tab-content { min-height: 0; height: 100%; flex: 1; padding: clamp(16px, 2vh, 24px) clamp(18px, 2vw, 28px); margin-top: 10px; display: flex; flex-direction: column; overflow: hidden; }
-  .lyrics-content, .artist-content, .recent-content, .favorites-content, .welcome-content { display: flex; flex-direction: column; height: 100%; min-height: 0; flex: 1; overflow: hidden; }
-  .lyrics-scroll, .biography, .recent-timeline, .favorites-list { flex: 1; height: 100%; min-height: 0; overflow-y: auto; }
+  .tab-content { min-height: 0; height: 100%; flex: 1 1 0%; padding: clamp(16px, 2vh, 24px) clamp(18px, 2vw, 28px); margin-top: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .lyrics-content, .artist-content, .recent-content, .favorites-content, .welcome-content { display: flex; flex-direction: column; height: 100%; min-height: 0; flex: 1 1 0%; overflow: hidden; }
+  .lyrics-scroll, .biography, .recent-timeline, .favorites-list { flex: 1 1 0%; height: 100%; min-height: 0; overflow-y: auto; }
   .content-loading, .empty-state { flex: 1; min-height: 0; }
   footer { padding-block: 8px; font-size: .62rem; flex-shrink: 0; }
 }
 
 /* ── Landscape Compact Heights (Laptops / Small Screens) ─── */
 @media (min-width: 921px) and (orientation: landscape) and (max-height: 780px) {
-  .app { padding: 12px; }
-  .shell { height: calc(100svh - 24px); border-radius: 18px; }
+  .app { padding: 20px; }
+  .shell { height: 100%; width: 100%; max-width: none; max-height: 100%; border-radius: 18px; }
   .topbar { padding-block: 6px; }
   .hero { gap: 4px; padding: 6px clamp(12px, 2vw, 24px); }
   .player-panel { padding: 8px clamp(12px, 2vw, 24px); }
