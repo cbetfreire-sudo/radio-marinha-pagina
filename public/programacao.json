@@ -6,7 +6,9 @@
       { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "08:00", "fim": "14:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "14:00", "fim": "16:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
+      { "inicio": "16:00", "fim": "19:00", "programa": "Rock'n Sail", "descricao": "Rock Nacionais e internacionais" },
       { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
       { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
     ],
@@ -14,15 +16,21 @@
       { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "08:00", "fim": "14:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "14:00", "fim": "16:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
+      { "inicio": "16:00", "fim": "19:00", "programa": "Rock'n Sail", "descricao": "Rock Nacionais e internacionais" },
       { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
       { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+
     ],
     "quarta": [
       { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "08:00", "fim": "14:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "14:00", "fim": "16:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
+      { "inicio": "16:00", "fim": "19:00", "programa": "Rock'n Sail", "descricao": "Rock Nacionais e internacionais" },
+      { "inicio": "17:00", "fim": "18:00", "programa": "MPB à Bordo", "descricao": "Músicas brasileiras a bordo" },
       { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
       { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
     ],
@@ -30,32 +38,44 @@
       { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "08:00", "fim": "14:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "14:00", "fim": "16:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
+      { "inicio": "16:00", "fim": "19:00", "programa": "Rock'n Sail", "descricao": "Rock Nacionais e internacionais" },
       { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
       { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+
+
     ],
     "sexta": [
       { "inicio": "00:00", "fim": "02:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "02:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "19:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "08:00", "fim": "14:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "14:00", "fim": "16:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
+      { "inicio": "16:00", "fim": "19:00", "programa": "Rock'n Sail", "descricao": "Rock Nacionais e internacionais" },
       { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
       { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
+
+
     ],
     "sabado": [
       { "inicio": "00:00", "fim": "04:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "04:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "17:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "08:00", "fim": "15:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "15:00", "fim": "19:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
       { "inicio": "17:00", "fim": "18:00", "programa": "MPB à Bordo", "descricao": "Músicas brasileiras a bordo" },
-      { "inicio": "18:00", "fim": "24:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" }
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
     ],
     "domingo": [
       { "inicio": "00:00", "fim": "04:00", "programa": "ONBOARD", "descricao": "Jazz e Blues" },
       { "inicio": "04:00", "fim": "06:00", "programa": "Brisa Marinha", "descricao": "MPB" },
       { "inicio": "06:00", "fim": "08:00", "programa": "Alvorada", "descricao": "Nacionais e internacionais" },
-      { "inicio": "08:00", "fim": "18:00", "programa": "Portos e Costas", "descricao": "MPB" },
-      { "inicio": "18:00", "fim": "24:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" }
+      { "inicio": "08:00", "fim": "15:00", "programa": "Portos e Costas", "descricao": "MPB" },
+      { "inicio": "15:00", "fim": "19:00", "programa": "Maresias", "descricao": "Pop Nacionais e internacionais" },
+      { "inicio": "19:00", "fim": "22:00", "programa": "Bons Ventos", "descricao": "Baladas dos anos 80 e 90" },
+      { "inicio": "22:00", "fim": "24:00", "programa": "Mares Tranquilos", "descricao": "Internacionais românticas" }
     ]
   }
 }
