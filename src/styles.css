@@ -2071,9 +2071,9 @@ footer {
 
 /* ── Mobile ──────────────────────────────────────────────── */
 @media (max-width: 620px) {
-  html, body, #root { width: 100%; max-width: 100%; min-height: 100%; margin: 0; overflow-x: hidden; }
+  html, body, #root { width: 100%; max-width: 100%; min-height: 100%; height: auto; margin: 0; overflow-x: hidden; overflow-y: auto; }
   body { min-height: 100svh; background: var(--navy-900); overscroll-behavior-x: none; }
-  .app { display: block; width: 100%; max-width: 100vw; min-height: 100svh; padding: 20px; overflow-x: hidden; overflow-y: visible; background: var(--navy-900); }
+  .app { display: block; width: 100%; max-width: 100vw; min-height: 100svh; height: auto; padding: 10px; overflow-x: hidden; overflow-y: visible; background: var(--navy-900); }
   .ambient {
     position: fixed;
     inset: 0;
@@ -2087,9 +2087,12 @@ footer {
   }
   .ambient::after { inset: -8%; width: auto; height: auto; transform: none; background: linear-gradient(180deg, rgba(11, 20, 38, 0.24), rgba(21, 42, 71, 0.30)); background-size: 140% 140%; animation-duration: 44s; }
   .shell {
+    display: flex;
+    flex-direction: column;
     width: 100%;
+    height: auto;
     max-width: none;
-    min-height: calc(100svh - 40px);
+    min-height: calc(100svh - 20px);
     max-height: none;
     overflow: visible;
     border: 1px solid var(--border-medium);
@@ -2120,8 +2123,8 @@ footer {
   .live { gap: 6px; font-size: .58rem; letter-spacing: .08em; }
   .live-dot { width: 8px; height: 8px; }
   .is-playing .live-dot { box-shadow: 0 0 0 4px rgba(232, 72, 85, 0.15); }
-  .layout { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; }
-  .hero { display: flex; flex-direction: column; width: 100%; max-width: 100%; gap: 16px; padding: 24px max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left)); overflow-x: hidden; }
+  .layout { display: block; width: 100%; max-width: 100%; height: auto; overflow: visible; flex: 1 1 auto; }
+  .hero { display: flex; flex-direction: column; width: 100%; max-width: 100%; height: auto; gap: 16px; padding: 24px max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left)); overflow: visible; overflow-x: hidden; }
   .cover-wrap { order: 1; width: min(68vw, 280px); }
   .cover { border-radius: 18px; }
   .track-copy { order: 2; width: 100%; }
@@ -2140,8 +2143,8 @@ footer {
   .quick-actions button > span:last-child { font-size: .56rem; }
   .quick-actions .action-icon-wrap { width: 32px; height: 32px; }
   .timer-menu { position: fixed; z-index: 25; right: 12px; bottom: 12px; left: 12px; width: auto; transform: none; }
-  .player-panel { width: 100%; max-width: 100%; padding: 24px max(14px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); overflow-x: hidden; }
-  .content-panel { min-height: 0; background: linear-gradient(180deg, rgba(11, 20, 38, 0.24), rgba(21, 42, 71, 0.12)); overflow: visible; }
+  .player-panel { width: 100%; max-width: 100%; height: auto; padding: 24px max(14px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); overflow: visible; overflow-x: hidden; }
+  .content-panel { min-height: 0; height: auto; background: linear-gradient(180deg, rgba(11, 20, 38, 0.24), rgba(21, 42, 71, 0.12)); overflow: visible; }
   .tabs { position: sticky; z-index: 4; top: 8px; width: 100%; min-width: 0; padding: 4px; backdrop-filter: blur(16px); display: flex; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs button { min-height: 42px; flex: 1 1 auto; padding: 0 10px; font-size: .68rem; }
