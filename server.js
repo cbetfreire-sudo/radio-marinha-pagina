@@ -3,14 +3,42 @@ import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { addRadioStatusCacheBuster, selectStationElapsed } from './radioClock.js';
+import { createLyricsTranslator, TranslationServiceError } from './translationService.js';
+import { selectBestSyncedLyrics } from './lyricsCatalog.js';
+import {
+    artistPageTitleMatches as isMatchingWikiTitle,
+    canonicalizeArtistName,
+    isMusicalBiography as isMusicalArtist,
+    normalizeArtistFingerprint
+} from './trackMetadata.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function loadLocalEnvironment(filePath) {
+    try {
+        if (!fs.existsSync(filePath)) return;
+        fs.readFileSync(filePath, 'utf8').split(/\r?\n/).forEach((line) => {
+            const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+            if (!match || process.env[match[1]] !== undefined) return;
+            const value = match[2].replace(/^(['"])(.*)\1$/, '$2');
+            process.env[match[1]] = value;
+        });
+    } catch (error) {
+        console.warn('[ENV] Não foi possível ler o arquivo local:', error.message);
+    }
+}
+
+loadLocalEnvironment(path.join(__dirname, '.env'));
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 const ALLOWED_HOSTS = ['radio-marinha-pagina.onrender.com', 'localhost', '127.0.0.1', '.onrender.com'];
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
 const DIST_DIR = path.join(__dirname, 'dist');
+
+app.set('trust proxy', IS_PRODUCTION ? 1 : false);
 
 const API_URL = 'https://stm0.inovativa.net/api/nowplaying/radiomarinha';
 const FALLBACK_GIF = '/imagens/radio_gif.gif';
@@ -31,6 +59,24 @@ const PORTUGUESE_SPELLING = new Map([
 ]);
 
 app.use(cors());
+app.use(express.json({ limit: '32kb' }));
+app.use((error, _req, res, next) => {
+    if (error?.type === 'entity.too.large') {
+        return res.status(413).json({
+            available: false,
+            error: 'payload_too_large',
+            message: 'A solicitação excede o limite permitido.'
+        });
+    }
+    if (error?.type === 'entity.parse.failed') {
+        return res.status(400).json({
+            available: false,
+            error: 'invalid_json',
+            message: 'O corpo da solicitação contém JSON inválido.'
+        });
+    }
+    return next(error);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/imagens', express.static(path.join(__dirname, 'imagens')));
 
@@ -54,7 +100,84 @@ let songHistory = [];
 const catalogCache = new Map();
 const artistCache = new Map();
 let radioStatusFetchInFlight = false;
+let radioExtrasFetchInFlight = false;
 const observedTrackDurations = new Map();
+const lyricsTranslator = createLyricsTranslator({
+    apiKey: process.env.GOOGLE_TRANSLATE_API_KEY || process.env.GOOGLE_CLOUD_TRANSLATE_API_KEY
+});
+const translationRateLimits = new Map();
+const TRANSLATION_WINDOW_MS = 10 * 60 * 1000;
+const TRANSLATION_CLIENT_REQUEST_LIMIT = 60;
+const TRANSLATION_CLIENT_CHARACTER_LIMIT = 120000;
+const TRANSLATION_GLOBAL_REQUEST_LIMIT = 1000;
+const TRANSLATION_GLOBAL_CHARACTER_LIMIT = 1000000;
+const TRANSLATION_MAX_CLIENT_BUCKETS = 500;
+const TRANSLATION_MAX_CONCURRENCY = 6;
+let translationRequestsInFlight = 0;
+let globalTranslationQuota = { requests: 0, characters: 0, startedAt: Date.now() };
+let radioStatusRequestSequence = 0;
+
+function countTranslationCharacters(lines) {
+    if (!Array.isArray(lines)) return 0;
+    return lines.reduce((total, line) => (
+        total + (typeof line?.text === 'string' ? Array.from(line.text).length : 0)
+    ), 0);
+}
+
+function isTranslationOriginAllowed(req) {
+    const origin = req.get('origin');
+    if (!origin) return true;
+    try {
+        const originHostname = new URL(origin).hostname.toLowerCase();
+        const forwardedHost = String(req.headers['x-forwarded-host'] || req.get('host') || '').split(',')[0].trim();
+        const requestHostname = new URL(`http://${forwardedHost}`).hostname.toLowerCase();
+        const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+        return originHostname === requestHostname
+            || (localHosts.has(originHostname) && localHosts.has(requestHostname));
+    } catch {
+        return false;
+    }
+}
+
+function consumeTranslationQuota(req) {
+    const now = Date.now();
+    const clientAddress = req.ip || req.socket.remoteAddress || 'local';
+    const characters = countTranslationCharacters(req.body?.lines);
+
+    if (now - globalTranslationQuota.startedAt >= TRANSLATION_WINDOW_MS) {
+        globalTranslationQuota = { requests: 0, characters: 0, startedAt: now };
+    }
+
+    const previous = translationRateLimits.get(clientAddress);
+    const bucket = !previous || now - previous.startedAt >= TRANSLATION_WINDOW_MS
+        ? { requests: 0, characters: 0, startedAt: now }
+        : previous;
+    bucket.requests += 1;
+    bucket.characters += characters;
+
+    if (!previous && translationRateLimits.size >= TRANSLATION_MAX_CLIENT_BUCKETS) {
+        for (const [key, value] of translationRateLimits) {
+            if (now - value.startedAt >= TRANSLATION_WINDOW_MS) translationRateLimits.delete(key);
+        }
+        while (translationRateLimits.size >= TRANSLATION_MAX_CLIENT_BUCKETS) {
+            translationRateLimits.delete(translationRateLimits.keys().next().value);
+        }
+    }
+    translationRateLimits.delete(clientAddress);
+    translationRateLimits.set(clientAddress, bucket);
+
+    globalTranslationQuota.requests += 1;
+    globalTranslationQuota.characters += characters;
+
+    const retryAfter = Math.max(1, Math.ceil((
+        TRANSLATION_WINDOW_MS - (now - Math.max(bucket.startedAt, globalTranslationQuota.startedAt))
+    ) / 1000));
+    const allowed = bucket.requests <= TRANSLATION_CLIENT_REQUEST_LIMIT
+        && bucket.characters <= TRANSLATION_CLIENT_CHARACTER_LIMIT
+        && globalTranslationQuota.requests <= TRANSLATION_GLOBAL_REQUEST_LIMIT
+        && globalTranslationQuota.characters <= TRANSLATION_GLOBAL_CHARACTER_LIMIT;
+    return { allowed, retryAfter };
+}
 
 async function fetchWithTimeout(url, options = {}, timeout = 5000) {
     const controller = new AbortController();
@@ -64,6 +187,22 @@ async function fetchWithTimeout(url, options = {}, timeout = 5000) {
     } finally {
         clearTimeout(timeoutId);
     }
+}
+
+function fetchFreshRadioStatus(timeout = 4000) {
+    radioStatusRequestSequence += 1;
+    const requestUrl = addRadioStatusCacheBuster(
+        API_URL,
+        `${Date.now()}-${radioStatusRequestSequence}`
+    );
+    return fetchWithTimeout(requestUrl, {
+        cache: 'no-store',
+        headers: {
+            Accept: 'application/json',
+            'Cache-Control': 'no-cache',
+            Pragma: 'no-cache'
+        }
+    }, timeout);
 }
 
 function normalizeMetadata(value) {
@@ -146,16 +285,16 @@ function resolveTrackFields(current) {
 
     if (!isMissingArtist) {
         if (titlePair && normalizeMetadata(titlePair.artist) === normalizeMetadata(receivedArtist)) {
-            return { artist: receivedArtist, title: titlePair.title };
+            return { artist: canonicalizeArtistName(receivedArtist), title: titlePair.title };
         }
-        return { artist: receivedArtist, title };
+        return { artist: canonicalizeArtistName(receivedArtist), title };
     }
 
     if (titlePair) {
-        return titlePair;
+        return { ...titlePair, artist: canonicalizeArtistName(titlePair.artist) };
     }
     if (textPair) {
-        return textPair;
+        return { ...textPair, artist: canonicalizeArtistName(textPair.artist) };
     }
 
     return { artist: '', title };
@@ -208,9 +347,9 @@ function restoreAccents(value, officialValues, usePortugueseSpelling = false) {
 }
 
 function isMatchingTrack(result, artist, title) {
-    const sourceArtist = normalizeMetadata(artist);
+    const sourceArtist = normalizeArtistFingerprint(artist);
     const sourceTitle = normalizeTitle(title);
-    const resultArtist = normalizeMetadata(result.artist?.name);
+    const resultArtist = normalizeArtistFingerprint(result.artist?.name);
     const resultTitle = normalizeTitle(result.title_short || result.title);
     if (!resultTitle) return false;
     let titleMatches = resultTitle === sourceTitle
@@ -249,13 +388,9 @@ const TRACK_VERSION_MARKERS = [
     /\b(?:ao vivo|live)\b/,
     /\b(?:acustico|acoustic)\b/,
     /\b(?:remix|mix)\b/,
-    /\b(?:remasterizado|remastered|remaster)\b/
+    /\b(?:remasterizado|remastered|remaster)\b/,
+    /\b(?:cover|karaoke|tribute|tributo|instrumental)\b/
 ];
-
-function hasVersionMarker(value) {
-    const normalized = normalizeVersionMetadata(value);
-    return TRACK_VERSION_MARKERS.some((marker) => marker.test(normalized));
-}
 
 function hasMatchingVersionProfile(source, candidate) {
     const sourceText = normalizeVersionMetadata(source);
@@ -266,7 +401,7 @@ function hasMatchingVersionProfile(source, candidate) {
 }
 
 function getTrackIdentity(artist, title) {
-    return `${normalizeMetadata(artist)}|${normalizeVersionMetadata(title)}`;
+    return `${normalizeArtistFingerprint(artist)}|${normalizeVersionMetadata(title)}`;
 }
 
 function sanitizeTrackDuration(value) {
@@ -305,7 +440,7 @@ function trackMatchScore(result, artist, title, targetDuration = 0, albumHint = 
         score += marker.test(sourceText) === marker.test(resultText) ? 18 : -45;
     });
     if (sourceText === resultText) score += 30;
-    if (!sourceText.match(/\b(?:ao vivo|live|acustico|acoustic|remix|mix|remasterizado|remastered|remaster)\b/)
+    if (!sourceText.match(/\b(?:ao vivo|live|acustico|acoustic|remix|mix|remasterizado|remastered|remaster|cover|karaoke|tribute|tributo|instrumental)\b/)
         && !result.title_version) score += 8;
     const resultDuration = Math.max(0, Number(result.duration) || 0);
     if (targetDuration && resultDuration) {
@@ -343,7 +478,7 @@ async function fetchDeezerArtistImage(artistName) {
 }
 
 async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = '') {
-    const cleanArtist = cleanRadioMetadata(artist);
+    const cleanArtist = canonicalizeArtistName(cleanRadioMetadata(artist));
     const cleanTitle = cleanRadioMetadata(title);
     try {
         const query = encodeURIComponent([cleanArtist, cleanTitle].filter(Boolean).join(' '));
@@ -369,12 +504,10 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
             : [];
         const matchingTracks = [...deezerTracks, ...itunesTracks]
             .filter((result) => isMatchingTrack(result, cleanArtist, cleanTitle));
-        const versionCompatibleTracks = hasVersionMarker(cleanTitle)
-            ? matchingTracks.filter((result) => hasMatchingVersionProfile(
-                cleanTitle,
-                [result.title, result.title_version].filter(Boolean).join(' ')
-            ))
-            : matchingTracks;
+        const versionCompatibleTracks = matchingTracks.filter((result) => hasMatchingVersionProfile(
+            cleanTitle,
+            [result.title, result.title_version].filter(Boolean).join(' ')
+        ));
         const albumMatches = normalizeMetadata(albumHint)
             ? versionCompatibleTracks.filter((result) => (
                 normalizeMetadata(result.album?.title) === normalizeMetadata(albumHint)
@@ -404,7 +537,7 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
             }
             return {
                 title: restoreAccents(title || match.title_short || match.title, officialValues, true),
-                artist: restoreAccents(artist || match.artist?.name || '', officialValues, true),
+                artist: restoreAccents(cleanArtist || match.artist?.name || '', officialValues, true),
                 album: match.album?.title || null,
                 duration: sanitizeTrackDuration(match.duration),
                 cover: coverUrl || null,
@@ -420,7 +553,7 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
 
     return {
         title: restoreAccents(title, [], true),
-        artist: restoreAccents(artist, [], true),
+        artist: restoreAccents(cleanArtist, [], true),
         album: null,
         duration: 0,
         cover: fallbackArtistCover || null,
@@ -429,23 +562,35 @@ async function findTrackMetadata(artist, title, targetDuration = 0, albumHint = 
 }
 
 async function getCachedTrackMetadata(artist, title, targetDuration = 0, albumHint = '') {
-    let cleanArtist = cleanRadioMetadata(artist);
+    let cleanArtist = canonicalizeArtistName(cleanRadioMetadata(artist));
     const cleanTitle = cleanRadioMetadata(title);
     if (!cleanTitle) return null;
 
     if (STATION_IDENTIFIERS.some(id => normalizeMetadata(cleanArtist).includes(id))) {
         cleanArtist = '';
     }
-    const cacheKey = getTrackIdentity(cleanArtist, cleanTitle);
+    const durationProfile = targetDuration ? Math.round(targetDuration / 5) * 5 : 0;
+    const cacheKey = `${getTrackIdentity(cleanArtist, cleanTitle)}|${normalizeMetadata(albumHint)}|${durationProfile}`;
     if (catalogCache.has(cacheKey)) {
         return catalogCache.get(cacheKey);
     }
-    const meta = await findTrackMetadata(cleanArtist, cleanTitle, targetDuration, albumHint);
-    catalogCache.set(cacheKey, meta);
+    const pendingMetadata = findTrackMetadata(cleanArtist, cleanTitle, targetDuration, albumHint);
+    catalogCache.set(cacheKey, pendingMetadata);
     if (catalogCache.size > 250) {
         catalogCache.delete(catalogCache.keys().next().value);
     }
-    return meta;
+    try {
+        const meta = await pendingMetadata;
+        if (catalogCache.get(cacheKey) === pendingMetadata) {
+            catalogCache.set(cacheKey, meta);
+        }
+        return meta;
+    } catch (error) {
+        if (catalogCache.get(cacheKey) === pendingMetadata) {
+            catalogCache.delete(cacheKey);
+        }
+        throw error;
+    }
 }
 
 async function processPlayingNext(nextData) {
@@ -520,63 +665,68 @@ async function processSongHistory(rawHistory = []) {
     return validHistory;
 }
 
-async function fetchRadioStatus() {
-    if (radioStatusFetchInFlight) return;
-    radioStatusFetchInFlight = true;
-    let refreshAgain = false;
+async function refreshRadioExtras(data) {
+    if (radioExtrasFetchInFlight) return;
+    radioExtrasFetchInFlight = true;
     try {
-        const response = await fetchWithTimeout(API_URL, { cache: 'no-store' }, 4000);
-        const data = await response.json();
-        rememberObservedDurations(data.song_history);
-
-        // Processa histórico e próxima música
         const [historyResult, nextResult] = await Promise.allSettled([
             processSongHistory(data.song_history),
             processPlayingNext(data.playing_next)
         ]);
         if (historyResult.status === 'fulfilled' && historyResult.value.length) {
-            const newItems = historyResult.value;
-            const merged = [...newItems];
+            const merged = [...historyResult.value];
             for (const existing of songHistory) {
-                const exists = merged.some(m => 
-                    (m.id && existing.id && m.id === existing.id) ||
-                    (m.title.toLowerCase() === existing.title.toLowerCase() && m.artist.toLowerCase() === existing.artist.toLowerCase())
+                const exists = merged.some((item) =>
+                    (item.id && existing.id && item.id === existing.id)
+                    || (item.title.toLowerCase() === existing.title.toLowerCase()
+                        && item.artist.toLowerCase() === existing.artist.toLowerCase())
                 );
-                if (!exists) {
-                    merged.push(existing);
-                }
+                if (!exists) merged.push(existing);
             }
-            merged.sort((a, b) => (b.playedAt || 0) - (a.playedAt || 0));
+            merged.sort((first, second) => (second.playedAt || 0) - (first.playedAt || 0));
             songHistory = merged.slice(0, 10);
         }
-        // Se a transmissão for ao vivo (streamer/estúdio), o AutoDJ fica congelado na Inovativa
-        // e o playing_next não corresponde à próxima faixa real do estúdio.
-        if (data.live?.is_live || !nextResult.value) {
+
+        if (data.live?.is_live || nextResult.status !== 'fulfilled' || !nextResult.value) {
             playingNext = null;
-        } else if (nextResult.status === 'fulfilled') {
+        } else {
             playingNext = nextResult.value;
         }
+    } finally {
+        radioExtrasFetchInFlight = false;
+    }
+}
+
+async function fetchRadioStatus() {
+    if (radioStatusFetchInFlight) return;
+    radioStatusFetchInFlight = true;
+    let refreshAgain = false;
+    try {
+        const response = await fetchFreshRadioStatus(4000);
+        const data = await response.json();
+        const sampledAt = Date.now();
+        rememberObservedDurations(data.song_history);
+        void refreshRadioExtras(data).catch(() => {});
 
         const playback = data.now_playing || {};
         const current = playback.song;
-        const sampledAt = Date.now();
         const playbackId = playback.sh_id || null;
         const playedAt = Number(playback.played_at) || null;
-        const reportedElapsed = Math.max(0, Number(playback.elapsed) || 0);
-        const clockElapsed = playedAt ? Math.max(0, sampledAt / 1000 - playedAt) : reportedElapsed;
-        const clockLooksAligned = Math.abs(clockElapsed - reportedElapsed) <= 5;
+        const reportedElapsed = playback.elapsed;
         const samePlayback = playbackId
             ? playbackId === nowPlaying.playbackId
             : Boolean(playedAt && playedAt === nowPlaying.playedAt);
         const previousElapsed = samePlayback
             ? nowPlaying.elapsed + Math.max(0, (sampledAt - nowPlaying.sampledAt) / 1000)
             : 0;
+        // `elapsed` acompanha a posição informada pela transmissão; `played_at`
+        // serve apenas como fallback quando essa posição não vem na resposta.
+        const sourceElapsed = selectStationElapsed(reportedElapsed, playedAt, sampledAt);
+        const reconciledElapsed = samePlayback
+            ? previousElapsed + Math.max(-1.25, Math.min(1.25, sourceElapsed - previousElapsed))
+            : sourceElapsed;
         const playbackState = {
-            elapsed: Math.max(
-                reportedElapsed,
-                clockLooksAligned ? clockElapsed : 0,
-                previousElapsed
-            ),
+            elapsed: Math.max(0, reconciledElapsed),
             duration: sanitizeTrackDuration(playback.duration),
             playbackId,
             playedAt,
@@ -593,6 +743,29 @@ async function fetchRadioStatus() {
                 ? observedTrack.duration
                 : 0;
             const sourceDuration = playbackState.duration || observedDuration;
+            const safeTitle = trackFields.title === "RADIO MARINHA" ? "Rádio Marinha" : trackFields.title;
+            const safeArtist = trackFields.artist === "RADIO MARINHA" ? "Rádio Marinha" : trackFields.artist;
+            const provisionalCover = !stationIdentifier
+                && current.art
+                && !current.art.includes('generic_song')
+                ? current.art
+                : FALLBACK_GIF;
+
+            // Publica imediatamente o relógio e a identidade essenciais. Catálogo,
+            // capa e grafia oficial enriquecem a mesma execução logo depois.
+            nowPlaying = {
+                title: capitalizeTitle(safeTitle || "Programação ao vivo"),
+                artist: safeArtist || "Rádio Marinha",
+                album: current.album || "Rádio Marinha Online",
+                cover: provisionalCover,
+                streamTitle: current.text,
+                ...playbackState,
+                duration: sourceDuration,
+                durationReliable: Boolean(sourceDuration),
+                syncAllowed: !stationIdentifier,
+                updatedAt: new Date().toISOString()
+            };
+
             const catalogTrack = stationIdentifier
                 ? null
                 : await getCachedTrackMetadata(
@@ -603,11 +776,7 @@ async function fetchRadioStatus() {
                 );
             if (!stationIdentifier) {
                 try {
-                    const verificationResponse = await fetchWithTimeout(
-                        API_URL,
-                        { cache: 'no-store' },
-                        2500
-                    );
+                    const verificationResponse = await fetchFreshRadioStatus(2500);
                     const verificationData = await verificationResponse.json();
                     const latestPlayback = verificationData.now_playing || {};
                     const capturedIdentity = playback.sh_id || playedAt || current.text;
@@ -641,8 +810,6 @@ async function fetchRadioStatus() {
                 || (durationReliable ? catalogTrack?.duration : 0)
                 || 0;
 
-            const safeTitle = trackFields.title === "RADIO MARINHA" ? "Rádio Marinha" : trackFields.title;
-            const safeArtist = trackFields.artist === "RADIO MARINHA" ? "Rádio Marinha" : trackFields.artist;
             nowPlaying = {
                 title: capitalizeTitle(catalogTrack?.title || safeTitle || "Programação ao vivo"),
                 artist: catalogTrack?.artist || safeArtist || "Rádio Marinha",
@@ -652,7 +819,7 @@ async function fetchRadioStatus() {
                 ...playbackState,
                 duration: resolvedDuration,
                 durationReliable,
-                syncAllowed: durationReliable && !stationIdentifier,
+                syncAllowed: !stationIdentifier,
                 updatedAt: new Date().toISOString()
             };
             console.log(`[RADIO] Tocando: ${current.text}`);
@@ -707,7 +874,7 @@ app.get('/api/next-track', (req, res) => {
 });
 
 app.get('/api/lyrics', async (req, res) => {
-    const artist = String(req.query.artist || '').trim();
+    const artist = canonicalizeArtistName(String(req.query.artist || '').trim());
     const title = String(req.query.title || '').trim();
     const album = String(req.query.album || '').trim();
     const requestedDuration = sanitizeTrackDuration(req.query.duration);
@@ -718,11 +885,25 @@ app.get('/api/lyrics', async (req, res) => {
 
     try {
         let lyricsData = null;
+        let lookupDuration = requestedDuration;
+        let lookupAlbum = album;
+
+        // Quando a emissora não informa a duração, usa os catálogos musicais para
+        // distinguir a gravação original de versões ao vivo, covers e remixes.
+        if (!lookupDuration) {
+            try {
+                const catalog = await getCachedTrackMetadata(artist, title, 0, album);
+                if (catalog && !catalog.ambiguous && sanitizeTrackDuration(catalog.duration)) {
+                    lookupDuration = sanitizeTrackDuration(catalog.duration);
+                    lookupAlbum = lookupAlbum || catalog.album || '';
+                }
+            } catch {}
+        }
 
         // 1. Tenta endpoint direto /api/get com e sem album
         const queryVariants = [];
-        if (requestedDuration || album) queryVariants.push({ duration: requestedDuration, album });
-        if (requestedDuration) queryVariants.push({ duration: requestedDuration, album: '' });
+        if (lookupDuration || lookupAlbum) queryVariants.push({ duration: lookupDuration, album: lookupAlbum });
+        if (lookupDuration) queryVariants.push({ duration: lookupDuration, album: '' });
         queryVariants.push({ duration: 0, album: '' });
 
         for (const variant of queryVariants) {
@@ -753,11 +934,17 @@ app.get('/api/lyrics', async (req, res) => {
                 if (searchRes.ok) {
                     const list = await searchRes.json();
                     if (Array.isArray(list) && list.length > 0) {
-                        const syncedMatch = list.find(item => item.syncedLyrics && item.trackName && item.artistName);
+                        const syncedMatch = selectBestSyncedLyrics(
+                            list,
+                            artist,
+                            title,
+                            lookupDuration,
+                            lookupAlbum
+                        );
                         if (syncedMatch) {
                             lyricsData = syncedMatch;
-                        } else if (!lyricsData && list[0]) {
-                            lyricsData = list[0];
+                        } else if (!lyricsData && list[0]?.plainLyrics) {
+                            lyricsData = { ...list[0], syncedLyrics: null };
                         }
                     }
                 }
@@ -773,7 +960,13 @@ app.get('/api/lyrics', async (req, res) => {
                 if (searchRes.ok) {
                     const list = await searchRes.json();
                     if (Array.isArray(list) && list.length > 0) {
-                        const syncedMatch = list.find(item => item.syncedLyrics);
+                        const syncedMatch = selectBestSyncedLyrics(
+                            list,
+                            artist,
+                            title,
+                            lookupDuration,
+                            lookupAlbum
+                        );
                         if (syncedMatch) {
                             lyricsData = syncedMatch;
                         }
@@ -789,7 +982,7 @@ app.get('/api/lyrics', async (req, res) => {
                 .replace(/\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]/g, '')
                 .replace(/[ \t]+$/gm, '');
             const lyrics = trustedSyncedLyrics || lyricsData.plainLyrics || plainFromSynced;
-            const duration = Math.max(0, Number(lyricsData.duration) || requestedDuration || 0);
+            const duration = Math.max(0, Number(lyricsData.duration) || lookupDuration || 0);
 
             if (lyrics) {
                 return res.json({
@@ -822,6 +1015,67 @@ app.get('/api/lyrics', async (req, res) => {
     }
 });
 
+app.post('/api/translate-lyrics', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    if (!isTranslationOriginAllowed(req)) {
+        return res.status(403).json({
+            available: false,
+            error: 'translation_origin_forbidden',
+            message: 'Origem não autorizada para usar a tradução.'
+        });
+    }
+    if (!req.is('application/json')) {
+        return res.status(415).json({
+            available: false,
+            error: 'unsupported_media_type',
+            message: 'Envie a solicitação como application/json.'
+        });
+    }
+    if (translationRequestsInFlight >= TRANSLATION_MAX_CONCURRENCY) {
+        res.setHeader('Retry-After', '2');
+        return res.status(503).json({
+            available: false,
+            error: 'translation_busy',
+            message: 'O serviço de tradução está ocupado. Tente novamente em instantes.'
+        });
+    }
+
+    const quota = consumeTranslationQuota(req);
+    if (!quota.allowed) {
+        res.setHeader('Retry-After', String(quota.retryAfter));
+        return res.status(429).json({
+            available: false,
+            error: 'translation_rate_limited',
+            message: 'Muitas solicitações de tradução. Tente novamente em alguns minutos.'
+        });
+    }
+
+    translationRequestsInFlight += 1;
+    try {
+        const result = await lyricsTranslator.translate(req.body?.lines);
+        return res.json(result);
+    } catch (error) {
+        const knownError = error instanceof TranslationServiceError;
+        const status = knownError ? error.status : 500;
+        if (status >= 500 && error?.code !== 'translation_not_configured') {
+            console.error('[TRANSLATION ERROR]:', error.message);
+        }
+        return res.status(status).json({
+            available: false,
+            error: knownError ? error.code : 'translation_error',
+            message: error?.code === 'translation_quota_exceeded'
+                ? 'O limite do serviço de tradução foi atingido. Tente novamente mais tarde.'
+                : error?.code === 'translation_credentials_rejected'
+                    ? 'A configuração do serviço de tradução precisa ser revisada.'
+                    : knownError
+                        ? error.message
+                        : 'Não foi possível traduzir a letra.'
+        });
+    } finally {
+        translationRequestsInFlight = Math.max(0, translationRequestsInFlight - 1);
+    }
+});
+
 const WIKI_USER_AGENT = 'RadioMarinhaOnline/2.0 (https://radiomarinha.marinha.mil.br; contato@radiomarinha.mil.br)';
 
 function toTitleCase(str) {
@@ -829,7 +1083,7 @@ function toTitleCase(str) {
 }
 
 function getArtistSearchVariants(rawName) {
-    const cleaned = cleanRadioMetadata(rawName)
+    const cleaned = cleanRadioMetadata(canonicalizeArtistName(rawName))
         .replace(/[\uFFFD]/g, '')
         .trim();
     if (!cleaned) return [];
@@ -875,48 +1129,6 @@ function getArtistSearchVariants(rawName) {
     }
 
     return Array.from(variants);
-}
-
-function isMatchingWikiTitle(pageTitle, targetName) {
-    if (!pageTitle || !targetName) return false;
-    const cleanPage = normalizeMetadata(pageTitle.replace(/\s*\([^)]*\)/g, ''));
-    const cleanTarget = normalizeMetadata(targetName.replace(/\s*\([^)]*\)/g, ''));
-    if (!cleanPage || !cleanTarget) return false;
-    if (cleanPage === cleanTarget) return true;
-    if (cleanPage.startsWith(cleanTarget) || cleanTarget.startsWith(cleanPage)) return true;
-    if (cleanPage.endsWith(cleanTarget) || cleanTarget.endsWith(cleanPage)) return true;
-    const pNoE = cleanPage.replace(/\be\b/g, '').replace(/\s+/g, ' ').trim();
-    const tNoE = cleanTarget.replace(/\be\b/g, '').replace(/\s+/g, ' ').trim();
-    if (pNoE && pNoE === tNoE) return true;
-    return false;
-}
-
-function isMusicalArtist(sumData) {
-    if (!sumData) return false;
-    const text = `${sumData.description || ''} ${sumData.extract || ''}`.toLowerCase();
-    
-    const nonMusicKeywords = [
-        'footballer', 'futebolista', 'jogador de futebol', 'jogador', 'atleta',
-        'político', 'politico', 'politician', 'militar', 'prelado', 'bispo',
-        'governador', 'prefeito', 'senador', 'deputado', 'juiz', 'advogado',
-        'município', 'municipio', 'cidade', 'telenovela', 'filme', 'empresa',
-        'escritor', 'poeta', 'geógrafo', 'historiador', 'médico'
-    ];
-
-    const musicKeywords = [
-        'cantor', 'cantora', 'músic', 'music', 'banda', 'band', 'compositor',
-        'songwriter', 'singer', 'rapper', 'violonista', 'guitarrista', 'pianista',
-        'baterista', 'baixista', 'intérprete', 'dupla', 'trio', 'grupo musical',
-        'vocalista', 'discografia', 'álbum', 'album', 'gravou', 'canção', 'canções',
-        'single', 'mpb', 'sertanejo', 'rock', 'pop', 'samba', 'pagode', 'bossa nova'
-    ];
-
-    const hasMusic = musicKeywords.some(w => text.includes(w));
-    const desc = (sumData.description || '').toLowerCase();
-    const hasNonMusicOnly = nonMusicKeywords.some(w => desc.includes(w)) && !hasMusic;
-
-    if (hasNonMusicOnly) return false;
-    return hasMusic;
 }
 
 async function fetchWikipediaArtist(artistName) {
@@ -1089,12 +1301,12 @@ async function fetchLastFmArtist(artistName) {
 }
 
 app.get('/api/artist', async (req, res) => {
-    const artist = String(req.query.name || '').trim();
+    const artist = canonicalizeArtistName(String(req.query.name || '').trim());
     if (!artist || isStationIdentifier(artist, '')) {
         return res.status(400).json({ biography: null });
     }
 
-    const cacheKey = normalizeMetadata(artist);
+    const cacheKey = normalizeArtistFingerprint(artist);
     if (artistCache.has(cacheKey)) {
         return res.json(artistCache.get(cacheKey));
     }
@@ -1112,7 +1324,9 @@ app.get('/api/artist', async (req, res) => {
             if (response.ok) {
                 const data = await response.json();
                 const result = data.artists?.[0];
-                if (result && (result.strBiographyPT || result.strBiographyEN)) {
+                if (result
+                    && normalizeArtistFingerprint(result.strArtist) === normalizeArtistFingerprint(artist)
+                    && (result.strBiographyPT || result.strBiographyEN)) {
                     artistData = {
                         name: result.strArtist || artist,
                         biography: result.strBiographyPT || result.strBiographyEN,
@@ -1151,7 +1365,9 @@ app.get('/api/artist', async (req, res) => {
         // 4. Fallback no Last.fm
         if (!artistData || !artistData.biography) {
             const lastFmData = await fetchLastFmArtist(artist);
-            if (lastFmData && lastFmData.biography) {
+            if (lastFmData
+                && normalizeArtistFingerprint(lastFmData.name) === normalizeArtistFingerprint(artist)
+                && lastFmData.biography) {
                 artistData = lastFmData;
             }
         }
@@ -1635,7 +1851,7 @@ async function startServer() {
 
     app.listen(PORT, () => {
         console.log(`[SUCESSO] Site e API em http://localhost:` + PORT);
-        setInterval(fetchRadioStatus, 5000);
+        setInterval(fetchRadioStatus, 3000);
         fetchRadioStatus();
     });
 }

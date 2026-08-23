@@ -1,5 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
+import {
+  createStreamPositionZeroAt,
+  estimateStreamStartupDelay,
+  estimateLyricsDuration,
+  findActiveLyricIndex,
+  getTrackTransitionDelay,
+  parseLyrics,
+  projectAudibleTrackElapsed,
+  projectBroadcastElapsed,
+  reconcileBroadcastClock
+} from "./lyricsSync.js";
 
 const STREAM_URL = "https://stm0.inovativa.net/listen/radiomarinha/radio.mp3";
 const FALLBACK_COVER = "/imagens/radio_gif.gif";
@@ -76,6 +87,23 @@ const initialTrack = {
   updatedAt: null
 };
 
+function readBufferedAhead(audio, mediaTime) {
+  try {
+    const ranges = audio?.buffered;
+    for (let index = (ranges?.length || 0) - 1; index >= 0; index -= 1) {
+      const rangeStart = ranges.start(index);
+      const rangeEnd = ranges.end(index);
+      if (mediaTime >= rangeStart - .25 && mediaTime <= rangeEnd + .25) {
+        const measured = rangeEnd - mediaTime;
+        return Number.isFinite(measured) && measured > .05 ? measured : null;
+      }
+    }
+  } catch {
+    // Alguns players não expõem TimeRanges durante a reconexão do stream.
+  }
+  return null;
+}
+
 const useFallbackCover = (event) => {
   const image = event.currentTarget;
   const fallbackUrl = new URL(FALLBACK_COVER, window.location.href).href;
@@ -104,62 +132,103 @@ const ActionIcon = ({ name }) => {
   return <svg className="action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 };
 
-const LRC_TIMESTAMP = /\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]/g;
+function CoverProgress({ cover, duration, elapsed, playbackSampledAt, title, trackKey, onError }) {
+  const frameRef = useRef(null);
+  const animationFrameRef = useRef(0);
+  const hasDuration = Number.isFinite(duration) && duration > 0;
 
-function parseLyrics(lyrics) {
-  const lyricLines = String(lyrics || "").split("\n");
-  const offsetLine = lyricLines.find((line) => /^\[offset:[+-]?\d+\]/i.test(line.trim()));
-  const offsetMatch = offsetLine?.trim().match(/^\[offset:([+-]?\d+)\]/i);
-  const offsetSeconds = offsetMatch ? Number(offsetMatch[1]) / 1000 : 0;
-  const plainRows = [];
-  const timedRows = [];
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return undefined;
 
-  lyricLines.forEach((rawLine, rowIndex) => {
-    if (/^\[(?:ar|al|ti|by|offset|length|re):/i.test(rawLine.trim())) return;
-    const timestamps = [...rawLine.matchAll(LRC_TIMESTAMP)].map((match) => (
-      Number(match[1]) * 60 + Number(match[2])
-    ));
-    const text = rawLine.replace(LRC_TIMESTAMP, "").trim();
-    plainRows.push({ id: `plain-${rowIndex}`, text, blank: !text });
-    timestamps.forEach((time, timeIndex) => {
-      if (text) timedRows.push({ id: `timed-${rowIndex}-${timeIndex}`, text, time: Math.max(0, time + offsetSeconds) });
-    });
-  });
+    cancelAnimationFrame(animationFrameRef.current);
+    const safeDuration = Math.max(0, Number(duration) || 0);
+    const anchorElapsed = Math.max(0, Number(elapsed) || 0);
+    const anchorSampledAt = Number(playbackSampledAt) || performance.now();
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let previousPaint = 0;
 
-  if (timedRows.length > 1) {
-    timedRows.sort((first, second) => first.time - second.time);
-    return { synced: true, rows: timedRows };
-  }
-  return { synced: false, rows: plainRows };
+    const updateProgress = (now) => {
+      if (!safeDuration) {
+        frame.style.setProperty("--cover-progress", "0deg");
+        frame.style.setProperty("--cover-pulse", "0deg");
+        frame.style.setProperty("--cover-pulse-soft", "0");
+        frame.style.setProperty("--cover-pulse-medium", "0");
+        frame.style.setProperty("--cover-pulse-strong", "0");
+        frame.style.setProperty("--cover-progress-ratio", "0");
+        return;
+      }
+
+      if (now - previousPaint >= 40) {
+        previousPaint = now;
+        const liveElapsed = anchorElapsed + Math.max(0, now - anchorSampledAt) / 1000;
+        const progress = Math.min(1, Math.max(0, liveElapsed / safeDuration));
+        const pulsePhase = reduceMotion ? 1 : (now % 5600) / 5600;
+        const pulseCycle = .5 - Math.cos(Math.PI * pulsePhase) / 2;
+        const pulseVisibility = reduceMotion
+          ? .5
+          : Math.max(0, Math.min(1, pulsePhase / .18, (1 - pulsePhase) / .22));
+        frame.style.setProperty("--cover-progress", `${progress * 360}deg`);
+        frame.style.setProperty("--cover-pulse", `${progress * pulseCycle * 360}deg`);
+        frame.style.setProperty("--cover-pulse-soft", String(pulseVisibility * .08));
+        frame.style.setProperty("--cover-pulse-medium", String(pulseVisibility * .22));
+        frame.style.setProperty("--cover-pulse-strong", String(pulseVisibility * .52));
+        frame.style.setProperty("--cover-progress-ratio", String(progress));
+        frame.setAttribute("aria-valuenow", String(Math.round(progress * 100)));
+      }
+      animationFrameRef.current = requestAnimationFrame(updateProgress);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(updateProgress);
+    return () => cancelAnimationFrame(animationFrameRef.current);
+  }, [duration, elapsed, playbackSampledAt, trackKey]);
+
+  return (
+    <div
+      ref={frameRef}
+      className={`cover-progress${hasDuration ? " has-duration" : " is-static"}`}
+      role={hasDuration ? "progressbar" : undefined}
+      aria-label={hasDuration ? `Progresso de ${title}` : undefined}
+      aria-valuemin={hasDuration ? 0 : undefined}
+      aria-valuemax={hasDuration ? 100 : undefined}
+    >
+      <span className="cover-progress-glass" aria-hidden="true" />
+      <img className="cover" src={cover} alt={`Capa de ${title}`} onError={onError} />
+    </div>
+  );
 }
 
-function estimateLyricsDuration(rows) {
-  const textRows = rows.filter((row) => !row.blank);
-  const wordCount = textRows.reduce((total, row) => total + row.text.split(/\s+/).length, 0);
-  const stanzaBreaks = rows.filter((row) => row.blank).length;
-  const singingTime = wordCount / 1.25;
-  const phrasingTime = textRows.length * .8 + stanzaBreaks * 3;
-  return Math.max(180, Math.min(480, singingTime + phrasingTime + 40));
-}
-
-function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyrics, playbackSampledAt, trackKey, title }) {
+function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration, elapsed, lyrics, playbackSampledAt, streamPositionZeroAt, trackKey, title }) {
   const parsedLyrics = useMemo(() => parseLyrics(lyrics), [lyrics]);
   const scrollRef = useRef(null);
   const animationFrameRef = useRef(0);
   const activeLineRef = useRef(-1);
   const lineRefs = useRef([]);
   const pointerStartRef = useRef(null);
+  const needsSnapRef = useRef(true);
+  const reduceMotionRef = useRef(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const playbackRef = useRef({
-    anchorElapsed: null,
-    anchorMediaTime: null,
+    clockMode: null,
+    correction: 0,
     elapsed: 0,
+    lastKaraokeElapsed: -1,
     sampledAt: performance.now(),
     trackKey: null
   });
-  const latencyRef = useRef(0);
   const [activeLine, setActiveLine] = useState(-1);
   const [manualPause, setManualPause] = useState(false);
   const [timingAdjustment, setTimingAdjustment] = useState(0);
+  const [translationRetry, setTranslationRetry] = useState(0);
+  const [translationMode, setTranslationMode] = useState(() => {
+    const storedMode = getStored("radio-lyrics-translation-mode", "original");
+    return ["original", "bilingual", "translated"].includes(storedMode) ? storedMode : "original";
+  });
+  const [translationState, setTranslationState] = useState({
+    status: "idle",
+    sourceLanguage: null,
+    translations: {},
+    message: ""
+  });
   const [followEnabled, setFollowEnabled] = useState(() => {
     const storedPreference = getStored("radio-lyrics-follow", null);
     if (typeof storedPreference === "boolean") return storedPreference;
@@ -167,19 +236,99 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
   });
 
   useEffect(() => {
-    latencyRef.current = Math.max(0, Number(latency) || 0);
-  }, [latency]);
+    const rows = parsedLyrics.rows
+      .filter((row) => !row.blank && row.text)
+      .map((row) => ({ id: row.id, text: row.text }));
+    if (!rows.length) {
+      setTranslationState({ status: "idle", sourceLanguage: null, translations: {}, message: "" });
+      return undefined;
+    }
+    if (translationMode === "original") {
+      setTranslationState({ status: "idle", sourceLanguage: null, translations: {}, message: "" });
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    setTranslationState({ status: "loading", sourceLanguage: null, translations: {}, message: "" });
+
+    fetch("/api/translate-lyrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines: rows }),
+      signal: controller.signal
+    })
+      .then(async (response) => {
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const error = new Error(result.message || "Não foi possível preparar a tradução.");
+          error.code = result.error || "translation_error";
+          throw error;
+        }
+        return result;
+      })
+      .then((result) => {
+        if (!active) return;
+        if (!result.available) {
+          setTranslationState({
+            status: "unavailable",
+            sourceLanguage: result.sourceLanguage || null,
+            translations: {},
+            message: ""
+          });
+          return;
+        }
+
+        const expectedIds = new Set(rows.map(({ id }) => id));
+        const translatedEntries = Array.isArray(result.translations)
+          ? result.translations.filter((entry) => (
+              expectedIds.has(String(entry?.id || ""))
+              && typeof entry?.text === "string"
+              && entry.text.trim()
+            ))
+          : [];
+        const translations = Object.fromEntries(
+          translatedEntries.map((entry) => [String(entry.id), entry.text.trim()])
+        );
+        const complete = Object.keys(translations).length === rows.length;
+        setTranslationState({
+          status: complete ? "ready" : "partial",
+          sourceLanguage: result.sourceLanguage || null,
+          translations,
+          message: complete ? "" : "Algumas linhas permanecerão no idioma original."
+        });
+      })
+      .catch((error) => {
+        if (!active || error.name === "AbortError") return;
+        const limited = ["translation_rate_limited", "translation_quota_exceeded"].includes(error.code);
+        const configurationError = ["translation_not_configured", "translation_credentials_rejected"].includes(error.code);
+        setTranslationState({
+          status: limited ? "limited" : configurationError ? "not-configured" : "error",
+          sourceLanguage: null,
+          translations: {},
+          message: error.message || "Não foi possível preparar a tradução."
+        });
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [parsedLyrics, trackKey, translationMode, translationRetry]);
 
   useEffect(() => {
     const previousPlayback = playbackRef.current;
-    const changedTrack = previousPlayback.trackKey !== trackKey;
+    const reconciledClock = reconcileBroadcastClock(previousPlayback, {
+      elapsed,
+      sampledAt: playbackSampledAt,
+      trackKey
+    });
+    const changedTrack = reconciledClock.changedTrack;
     playbackRef.current = {
       ...previousPlayback,
-      anchorElapsed: changedTrack ? null : previousPlayback.anchorElapsed,
-      anchorMediaTime: changedTrack ? null : previousPlayback.anchorMediaTime,
-      elapsed: Math.max(0, Number(elapsed) || 0),
-      sampledAt: Number(playbackSampledAt) || performance.now(),
-      trackKey
+      ...reconciledClock,
+      clockMode: changedTrack ? null : previousPlayback.clockMode,
+      lastKaraokeElapsed: changedTrack ? -1 : previousPlayback.lastKaraokeElapsed
     };
   }, [elapsed, playbackSampledAt, trackKey]);
 
@@ -190,50 +339,93 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
     setManualPause(false);
     setTimingAdjustment(0);
     lineRefs.current = [];
+    needsSnapRef.current = true;
     const animationFrame = requestAnimationFrame(() => {
       if (scrollRef.current) scrollRef.current.scrollTop = 0;
     });
     return () => cancelAnimationFrame(animationFrame);
   }, [lyrics, trackKey]);
 
-  const following = active && followEnabled && !manualPause;
+  const following = followEnabled && !manualPause;
+
+  useEffect(() => {
+    if (following) needsSnapRef.current = true;
+  }, [following, trackKey]);
+
+  useLayoutEffect(() => {
+    if (following && ["ready", "partial"].includes(translationState.status)) {
+      needsSnapRef.current = true;
+    }
+  }, [following, translationMode, translationState.status]);
+
+  useEffect(() => {
+    const requestSnap = () => {
+      if (!document.hidden) needsSnapRef.current = true;
+    };
+    document.addEventListener("visibilitychange", requestSnap);
+    window.addEventListener("pageshow", requestSnap);
+    return () => {
+      document.removeEventListener("visibilitychange", requestSnap);
+      window.removeEventListener("pageshow", requestSnap);
+    };
+  }, []);
+
+  useEffect(() => {
+    playbackRef.current.lastKaraokeElapsed = -1;
+    needsSnapRef.current = true;
+  }, [streamPositionZeroAt]);
 
   useEffect(() => {
     cancelAnimationFrame(animationFrameRef.current);
-    if (!following || !parsedLyrics.rows.length) return;
+    if (!parsedLyrics.rows.length) return undefined;
 
     let previousFrame = performance.now();
     const updateScroll = (now) => {
       const scroller = scrollRef.current;
       if (!scroller) return;
-      const delta = Math.min(64, Math.max(0, now - previousFrame));
+      const frameGap = Math.max(0, now - previousFrame);
+      const delta = Math.min(64, frameGap);
+      if (frameGap > 250) needsSnapRef.current = true;
       previousFrame = now;
       const playback = playbackRef.current;
-      const serverElapsed = playback.elapsed + (now - playback.sampledAt) / 1000;
-      const mediaTime = audioRef.current?.currentTime;
-      const hasMediaClock = Number.isFinite(mediaTime) && mediaTime >= 0;
-      if (hasMediaClock && (
-        playback.anchorMediaTime === null
-        || mediaTime < playback.anchorMediaTime - .75
-      )) {
-        playback.anchorMediaTime = mediaTime;
-        playback.anchorElapsed = Math.max(0, serverElapsed - latencyRef.current);
+      const serverElapsed = projectBroadcastElapsed(playback, now);
+      const audio = audioRef.current;
+      const mediaTime = audio?.currentTime;
+      const canUseMediaClock = Boolean(
+        audioClockReady
+        && audioPlaying
+        && audio
+        && !audio.paused
+        && !audio.ended
+        && Number.isFinite(mediaTime)
+        && mediaTime >= 0
+        && Number.isFinite(streamPositionZeroAt)
+      );
+      const mediaElapsed = canUseMediaClock
+        ? projectAudibleTrackElapsed({
+            mediaTime,
+            streamPositionZeroAt,
+            trackElapsed: playback.elapsed,
+            trackSampledAt: playback.sampledAt
+          })
+        : null;
+      const hasMediaClock = Number.isFinite(mediaElapsed);
+      const clockMode = hasMediaClock ? "media" : "broadcast";
+      if (playback.clockMode !== clockMode) {
+        playback.clockMode = clockMode;
+        playback.lastKaraokeElapsed = -1;
       }
-      const audibleElapsed = hasMediaClock && playback.anchorMediaTime !== null
-        ? playback.anchorElapsed + Math.max(0, mediaTime - playback.anchorMediaTime)
-        : serverElapsed - latencyRef.current;
-      const currentElapsed = Math.max(0, audibleElapsed + timingAdjustment);
+      const audibleElapsed = hasMediaClock ? mediaElapsed : serverElapsed;
+      const monotonicElapsed = playback.lastKaraokeElapsed < 0
+        ? audibleElapsed
+        : Math.max(audibleElapsed, playback.lastKaraokeElapsed);
+      playback.lastKaraokeElapsed = monotonicElapsed;
+      const currentElapsed = Math.max(0, monotonicElapsed + timingAdjustment);
       const maximumScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       let targetScroll = scroller.scrollTop;
 
       if (parsedLyrics.synced) {
-        let currentIndex = -1;
-        for (let index = parsedLyrics.rows.length - 1; index >= 0; index -= 1) {
-          if (currentElapsed >= parsedLyrics.rows[index].time) {
-            currentIndex = index;
-            break;
-          }
-        }
+        const currentIndex = findActiveLyricIndex(parsedLyrics.rows, currentElapsed);
         if (currentIndex !== activeLineRef.current) {
           activeLineRef.current = currentIndex;
           setActiveLine(currentIndex);
@@ -256,23 +448,33 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
         targetScroll = maximumScroll * progress * .96;
       }
 
-      targetScroll = Math.max(0, Math.min(maximumScroll, targetScroll));
-      const easingDuration = parsedLyrics.synced ? 520 : 900;
-      const easing = 1 - Math.exp(-delta / easingDuration);
-      scroller.scrollTop += (targetScroll - scroller.scrollTop) * easing;
+      if (following) {
+        targetScroll = Math.max(0, Math.min(maximumScroll, targetScroll));
+        if (needsSnapRef.current || reduceMotionRef.current) {
+          scroller.scrollTop = targetScroll;
+          needsSnapRef.current = false;
+        } else {
+          const easingDuration = parsedLyrics.synced ? 260 : 720;
+          const easing = 1 - Math.exp(-delta / easingDuration);
+          scroller.scrollTop += (targetScroll - scroller.scrollTop) * easing;
+        }
+      }
       animationFrameRef.current = requestAnimationFrame(updateScroll);
     };
 
     animationFrameRef.current = requestAnimationFrame(updateScroll);
     return () => cancelAnimationFrame(animationFrameRef.current);
-  }, [audioRef, duration, following, parsedLyrics, timingAdjustment, trackKey]);
+  }, [audioClockReady, audioPlaying, audioRef, duration, following, parsedLyrics, streamPositionZeroAt, timingAdjustment, trackKey]);
 
   const pauseForInteraction = () => {
-    if (followEnabled && !manualPause) setManualPause(true);
+    if (!manualPause) setManualPause(true);
   };
 
   const toggleFollowing = () => {
     if (manualPause) {
+      needsSnapRef.current = true;
+      setFollowEnabled(true);
+      localStorage.setItem("radio-lyrics-follow", JSON.stringify(true));
       setManualPause(false);
       return;
     }
@@ -287,21 +489,43 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
     setTimingAdjustment((current) => Math.max(-30, Math.min(30, current + seconds)));
   };
 
+  const changeTranslationMode = (mode) => {
+    setTranslationMode(mode);
+    localStorage.setItem("radio-lyrics-translation-mode", JSON.stringify(mode));
+  };
+
   const controlLabel = manualPause
-    ? "Retomar rolagem"
-    : followEnabled && active
+    ? "Voltar à linha atual"
+    : followEnabled
       ? "Pausar rolagem"
-      : followEnabled
-        ? "Automático ativado"
-        : "Acompanhar letra";
-  const controlClass = following ? "active" : followEnabled && !manualPause ? "ready" : "";
-  const controlSymbol = following ? "Ⅱ" : followEnabled && !manualPause ? "✓" : "▶";
+      : "Acompanhar letra";
+  const controlClass = following ? "active" : "";
+  const controlSymbol = following ? "Ⅱ" : "▶";
+  const translationAvailable = ["ready", "partial"].includes(translationState.status);
+  const sourceLanguageName = translationState.sourceLanguage === "es" ? "Espanhol" : "Inglês";
+  const displayedLanguage = translationAvailable && translationMode === "translated"
+    ? translationState.status === "partial"
+      ? "tradução em português com trechos no idioma original"
+      : "tradução em português"
+    : translationAvailable && translationMode === "bilingual"
+      ? translationState.status === "partial"
+        ? "original e tradução parcial em português"
+        : "original e tradução em português"
+      : "idioma original";
+  const activeTimestamp = activeLine >= 0 ? parsedLyrics.rows[activeLine]?.time : null;
+  const nextTimestamp = activeTimestamp === null || activeTimestamp === undefined
+    ? null
+    : parsedLyrics.rows.find((candidate, candidateIndex) => (
+        candidateIndex > activeLine
+        && !candidate.blank
+        && candidate.time > activeTimestamp + .025
+      ))?.time;
 
   return (
     <div className="lyrics-view">
       <div className="lyrics-toolbar">
         <span className="lyrics-sync-status" role="status" aria-live="polite">
-          {manualPause ? "Rolagem pausada" : parsedLyrics.synced ? "Sincronizada" : "Acompanhamento aproximado"}
+          {manualPause ? "Rolagem pausada" : parsedLyrics.synced ? "Ao vivo · Sincronizada" : "Ao vivo · Acompanhamento aproximado"}
           <i aria-hidden="true" />
         </span>
         <div className="lyrics-toolbar-actions">
@@ -313,19 +537,28 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
             </span>
             <button
               type="button"
-              aria-label="Atrasar a letra em 5 segundos"
-              title="Atrasar a letra em 5 segundos"
-              onClick={() => adjustTiming(-5)}
+              aria-label="Atrasar a letra em 1 segundo"
+              title="Atrasar a letra em 1 segundo"
+              onClick={() => adjustTiming(-1)}
             >
-              −5 s
+              −1 s
             </button>
             <button
               type="button"
-              aria-label="Adiantar a letra em 5 segundos"
-              title="Adiantar a letra em 5 segundos"
-              onClick={() => adjustTiming(5)}
+              aria-label="Zerar ajuste da letra"
+              title="Zerar ajuste"
+              disabled={timingAdjustment === 0}
+              onClick={() => setTimingAdjustment(0)}
             >
-              +5 s
+              0
+            </button>
+            <button
+              type="button"
+              aria-label="Adiantar a letra em 1 segundo"
+              title="Adiantar a letra em 1 segundo"
+              onClick={() => adjustTiming(1)}
+            >
+              +1 s
             </button>
           </div>
           <button
@@ -340,44 +573,161 @@ function AutoScrollingLyrics({ active, audioRef, duration, elapsed, latency, lyr
           </button>
         </div>
       </div>
-      <div
-        ref={scrollRef}
-        className="lyrics-scroll"
-        tabIndex="0"
-        aria-label={`Letra de ${title}`}
-        onWheel={pauseForInteraction}
-        onKeyDown={(event) => {
-          if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) pauseForInteraction();
-        }}
-        onPointerDown={(event) => {
-          pointerStartRef.current = { x: event.clientX, y: event.clientY };
-          if (event.pointerType !== "mouse") pauseForInteraction();
-        }}
-        onPointerMove={(event) => {
-          const start = pointerStartRef.current;
-          if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
-            pointerStartRef.current = null;
-            pauseForInteraction();
-          }
-        }}
-        onPointerUp={() => { pointerStartRef.current = null; }}
-        onPointerCancel={() => {
-          if (pointerStartRef.current) pauseForInteraction();
-          pointerStartRef.current = null;
-        }}
-      >
-        {parsedLyrics.rows.map((row, index) => row.blank
-          ? <span className="lyric-break" key={row.id} aria-hidden="true" />
-          : (
-            <p
-              ref={(element) => { lineRefs.current[index] = element; }}
-              className={`lyric-line ${parsedLyrics.synced && index === activeLine ? "is-current" : ""}`}
-              aria-current={parsedLyrics.synced && index === activeLine ? "true" : undefined}
-              key={row.id}
-            >
-              {row.text}
-            </p>
+      {translationState.status === "loading" && (
+        <div className="lyrics-translation-status" role="status" aria-live="polite">
+          <span className="translation-spinner" aria-hidden="true" />
+          Detectando idioma e preparando tradução…
+        </div>
+      )}
+      <div className="lyrics-language-bar">
+        <span className="lyrics-language-label">
+          {translationAvailable ? (
+            <>{sourceLanguageName} <b aria-hidden="true">→</b> Português</>
+          ) : (
+            <>Tradução sob demanda</>
+          )}
+        </span>
+        <fieldset className="lyrics-language-switch">
+          <legend>Exibição da letra</legend>
+          {[
+            ["original", "Original"],
+            ["bilingual", "Bilíngue"],
+            ["translated", "Português"]
+          ].map(([mode, label]) => (
+            <label key={mode}>
+              <input
+                type="radio"
+                name={`lyrics-language-${trackKey}`}
+                value={mode}
+                checked={translationMode === mode}
+                onChange={() => changeTranslationMode(mode)}
+              />
+              <span>{label}</span>
+            </label>
           ))}
+        </fieldset>
+      </div>
+      {translationState.status === "partial" && (
+        <div className="lyrics-translation-status is-warning" role="status">
+          {translationState.message}
+        </div>
+      )}
+      {translationState.status === "unavailable" && (
+        <div className="lyrics-translation-status is-neutral" role="status">
+          {translationState.sourceLanguage === "pt"
+            ? "A letra já está em português."
+            : "A tradução automática está disponível para letras em inglês e espanhol."}
+        </div>
+      )}
+      {["not-configured", "limited", "error"].includes(translationState.status) && (
+        <div className="lyrics-translation-status is-warning" role="status" aria-live="polite">
+          <span>{translationState.status === "not-configured" ? translationState.message || "Tradução ainda não configurada." : translationState.message}</span>
+          {translationState.status === "error" && (
+            <button type="button" onClick={() => setTranslationRetry((current) => current + 1)}>Tentar novamente</button>
+          )}
+        </div>
+      )}
+      <div className="lyrics-scroll-shell">
+        <div
+          ref={scrollRef}
+          className={`lyrics-scroll${following ? " is-following" : ""}`}
+          tabIndex="0"
+          aria-label={`Letra de ${title}, ${displayedLanguage}`}
+          onWheel={pauseForInteraction}
+          onKeyDown={(event) => {
+            if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) pauseForInteraction();
+          }}
+          onPointerDown={(event) => {
+            pointerStartRef.current = { x: event.clientX, y: event.clientY };
+            pauseForInteraction();
+          }}
+          onPointerMove={(event) => {
+            const start = pointerStartRef.current;
+            if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+              pointerStartRef.current = null;
+              pauseForInteraction();
+            }
+          }}
+          onPointerUp={() => { pointerStartRef.current = null; }}
+          onPointerCancel={() => {
+            if (pointerStartRef.current) pauseForInteraction();
+            pointerStartRef.current = null;
+          }}
+        >
+          {parsedLyrics.rows.map((row, index) => {
+            if (row.blank) return <span className="lyric-break" key={row.id} aria-hidden="true" />;
+            const isCurrent = Boolean(
+              parsedLyrics.synced
+              && activeTimestamp !== null
+              && activeTimestamp !== undefined
+              && Math.abs(row.time - activeTimestamp) < .025
+            );
+            const isNext = Boolean(
+              parsedLyrics.synced
+              && nextTimestamp !== null
+              && nextTimestamp !== undefined
+              && Math.abs(row.time - nextTimestamp) < .025
+            );
+            const lineDistance = activeLine >= 0 ? Math.abs(index - activeLine) : 0;
+            const emphasisClass = isCurrent
+              ? "is-current"
+              : isNext
+                ? "is-next"
+                : parsedLyrics.synced && activeLine >= 0 && lineDistance >= 4
+                  ? "is-distant"
+                  : parsedLyrics.synced && activeLine >= 0
+                    ? "is-nearby"
+                    : "";
+            const translatedText = translationState.translations[row.id];
+            const hasTranslation = Boolean(translationAvailable && translatedText);
+            const hasDistinctTranslation = Boolean(
+              hasTranslation
+              && translatedText.localeCompare(row.text, undefined, { sensitivity: "base" }) !== 0
+            );
+            const showOriginal = translationMode !== "translated" || !hasTranslation;
+            const showTranslation = hasTranslation && (
+              translationMode === "translated"
+              || (translationMode === "bilingual" && hasDistinctTranslation)
+            );
+            return (
+              <p
+                ref={(element) => { lineRefs.current[index] = element; }}
+                className={`lyric-line ${emphasisClass}`}
+                aria-current={parsedLyrics.synced && index === activeLine ? "true" : undefined}
+                key={row.id}
+              >
+                {showOriginal && (
+                  <span
+                    className="lyric-original"
+                    lang={translationState.sourceLanguage || undefined}
+                    dir="auto"
+                  >
+                    {row.text}
+                  </span>
+                )}
+                {showTranslation && (
+                  <span
+                    className={`lyric-translation${translationMode === "translated" ? " is-primary" : ""}`}
+                    lang="pt-BR"
+                    dir="auto"
+                  >
+                    {translatedText}
+                  </span>
+                )}
+              </p>
+            );
+          })}
+        </div>
+        {manualPause && (
+          <button
+            type="button"
+            className="lyrics-return-current"
+            onClick={toggleFollowing}
+          >
+            <span aria-hidden="true">↥</span>
+            Voltar à linha atual
+          </button>
+        )}
       </div>
     </div>
   );
@@ -427,8 +777,11 @@ function SloganOceanWave({ active }) {
     const navigationStrength = () => smoothstep(seaEnergy);
     const waveAmplitude = () => .1 + navigationStrength() * .9;
     const waveScale = () => Math.max(.78, Math.min(1.45, height / 30));
-    const obstacleX = () => width * .47;
-    const vesselWidth = () => Math.max(100, Math.min(120, width * .52));
+    const vesselWidth = () => Math.max(112, Math.min(156, width * .62));
+    const obstacleX = () => Math.max(
+      12,
+      Math.min(width * .42, width - vesselWidth() - 20)
+    );
     const surfaceY = (x, time) => {
       const scale = waveScale();
       const baseline = height * waterlineRatio;
@@ -593,7 +946,7 @@ function SloganOceanWave({ active }) {
       if (!shipReady) return { x: fallbackX, y: fallbackY, impactStrength: 0 };
 
       const renderedWidth = vesselWidth();
-      const aspectRatio = shipImage.naturalWidth / shipImage.naturalHeight || 3.69;
+      const aspectRatio = shipImage.naturalWidth / shipImage.naturalHeight || 3.86;
       const renderedHeight = renderedWidth / aspectRatio;
       const isStaticFrame = deltaTime <= 0;
 
@@ -722,8 +1075,10 @@ function SloganOceanWave({ active }) {
       }
 
       const shipCenterX = x + renderedWidth * .5;
+      const crispCenterX = Math.round(shipCenterX * pixelRatio) / pixelRatio;
+      const crispHeave = Math.round(shipHeave * pixelRatio) / pixelRatio;
       context.save();
-      context.translate(shipCenterX, shipHeave);
+      context.translate(crispCenterX, crispHeave);
       context.rotate(shipPitch);
 
       // Sombra estreita sob o casco para integrar o recorte ao mar.
@@ -734,9 +1089,9 @@ function SloganOceanWave({ active }) {
 
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      context.shadowColor = "rgba(0, 8, 16, .42)";
-      context.shadowBlur = 2.2 * scale;
-      context.shadowOffsetY = 1.1 * scale;
+      context.shadowColor = "rgba(0, 8, 16, .3)";
+      context.shadowBlur = 1.15 * scale;
+      context.shadowOffsetY = .7 * scale;
       context.drawImage(shipImage, -renderedWidth * .5, -renderedHeight * .88, renderedWidth, renderedHeight);
 
       // A âncora pertence ao navio: fundeada na proa quando a rádio está
@@ -932,7 +1287,7 @@ function SloganOceanWave({ active }) {
       const bounds = canvas.getBoundingClientRect();
       width = Math.max(1, bounds.width);
       height = Math.max(1, bounds.height);
-      pixelRatio = Math.min(2, window.devicePixelRatio || 1);
+      pixelRatio = Math.min(3, window.devicePixelRatio || 1);
       canvas.width = Math.round(width * pixelRatio);
       canvas.height = Math.round(height * pixelRatio);
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
@@ -956,7 +1311,7 @@ function SloganOceanWave({ active }) {
     if (!resizeObserver) window.addEventListener("resize", resizeCanvas);
     document.addEventListener("visibilitychange", handleVisibility);
     shipImage.addEventListener("load", handleShipLoad);
-    shipImage.src = "/imagens/navio-f200-v2.png";
+    shipImage.src = "/imagens/navio-f200-v4.png";
     resizeCanvas();
 
     return () => {
@@ -997,7 +1352,8 @@ function parseTimeMinutes(value, isEndTime = false) {
 }
 
 function getCurrentProgram(schedule, date = new Date()) {
-  if (!schedule || !schedule.length) return "Programação ao vivo";
+  const fallback = { title: "Programação ao vivo", description: "Rádio Marinha" };
+  if (!schedule || !schedule.length) return fallback;
   const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
   const programs = schedule[dayIndex] || [];
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
@@ -1010,7 +1366,11 @@ function getCurrentProgram(schedule, date = new Date()) {
     return currentMinutes >= startMin && currentMinutes < endMin;
   });
 
-  return scheduledProgram?.[1] || "Programação ao vivo";
+  if (!scheduledProgram) return fallback;
+  return {
+    title: scheduledProgram[1] || fallback.title,
+    description: scheduledProgram[2] || fallback.description
+  };
 }
 
 function getUpcomingProgramsList(schedule, date = new Date(), limit = 6) {
@@ -1167,12 +1527,13 @@ function RealisticHelmPlayButton({ playing, loading, onClick }) {
 
   const angles = [0, 45, 90, 135, 180, 225, 270, 315];
   const ropeAngles = [22.5, 112.5, 202.5, 292.5]; // As 4 amarras de corda náutica
+  const actionLabel = loading ? "Conectando à rádio" : playing ? "Pausar rádio" : "Ouvir rádio";
 
   return (
     <button
       className="realistic-helm-button"
       onClick={onClick}
-      aria-label={playing ? "Pausar rádio" : "Ouvir rádio"}
+      aria-label={actionLabel}
       type="button"
     >
       <div className="realistic-helm-aura" aria-hidden="true" />
@@ -1440,11 +1801,10 @@ export default function App() {
   const playingRef = useRef(false);
   const streamRequestStartedAtRef = useRef(0);
   const streamWaitingStartedAtRef = useRef(0);
-  const streamWaitingMediaTimeRef = useRef(0);
-  const streamHasStartedRef = useRef(false);
-  const streamLatencyRef = useRef(0);
-  const streamTransportOverheadRef = useRef(0);
-  const streamLatencyMeasuredAtRef = useRef(0);
+  const lastStreamMediaTimeRef = useRef(null);
+  const streamMediaSourceRef = useRef("");
+  const streamPositionZeroAtRef = useRef(null);
+  const showsInitializedRef = useRef(false);
   const [track, setTrack] = useState(initialTrack);
   const [nextTrack, setNextTrack] = useState(null);
   const [history, setHistory] = useState([]);
@@ -1452,7 +1812,8 @@ export default function App() {
   const [coverPalette, setCoverPalette] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [streamLatency, setStreamLatency] = useState(0);
+  const [audioClockReady, setAudioClockReady] = useState(false);
+  const [streamPositionZeroAt, setStreamPositionZeroAt] = useState(null);
   const [volume, setVolume] = useState(() => getStored("radio-volume", 0.85));
   const [lastVolume, setLastVolume] = useState(0.85);
   const [message, setMessage] = useState("");
@@ -1461,6 +1822,7 @@ export default function App() {
   const [timerOpen, setTimerOpen] = useState(false);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [lyrics, setLyrics] = useState("");
+  const [lyricsTrackKey, setLyricsTrackKey] = useState("");
   const [lyricsDuration, setLyricsDuration] = useState(0);
   const [lyricsLoading, setLyricsLoading] = useState(true);
   const [artistInfo, setArtistInfo] = useState(null);
@@ -1533,17 +1895,14 @@ export default function App() {
   }, [loadEventsForCity]);
 
   useEffect(() => {
-    loadLocationAndEvents();
-  }, [loadLocationAndEvents]);
-
-  useEffect(() => {
     if (panel === "news" && news.length === 0) {
       loadNews();
     }
-    if (panel === "shows" && platforms.length === 0) {
-      loadEventsForCity(selectedCity);
+    if (panel === "shows" && !showsInitializedRef.current) {
+      showsInitializedRef.current = true;
+      loadLocationAndEvents();
     }
-  }, [panel, news.length, platforms.length, loadNews, loadEventsForCity, selectedCity]);
+  }, [panel, news.length, loadNews, loadLocationAndEvents]);
 
   const filteredNews = useMemo(() => {
     if (newsFilter === "all") return news;
@@ -1553,7 +1912,13 @@ export default function App() {
   displayedTrackRef.current = track;
   playingRef.current = playing;
   const favoriteKey = `${track.artist}—${track.title}`;
-  const playbackKey = `${favoriteKey}—${track.playbackId || track.playedAt || track.updatedAt || "atual"}`;
+  const stablePlaybackIdentity = track.playbackId || track.playedAt;
+  const playbackKey = stablePlaybackIdentity
+    ? `execucao-${stablePlaybackIdentity}`
+    : `${favoriteKey}—${track.updatedAt || "atual"}`;
+  const lyricsKey = stablePlaybackIdentity
+    ? `execucao-${stablePlaybackIdentity}`
+    : favoriteKey;
   const favorite = favorites.some((item) => item.key === favoriteKey);
 
   const effectiveCover = (track?.cover && track.cover !== FALLBACK_COVER)
@@ -1586,6 +1951,61 @@ export default function App() {
     if (pendingTrackRef.current) displayTrack(pendingTrackRef.current);
   }
 
+  function getTransitionDelayForTrack(trackItem) {
+    const audio = audioRef.current;
+    if (
+      !playingRef.current
+      || !audio
+      || audio.paused
+      || !Number.isFinite(streamPositionZeroAtRef.current)
+    ) {
+      return null;
+    }
+    return getTrackTransitionDelay({
+      mediaTime: audio.currentTime,
+      streamPositionZeroAt: streamPositionZeroAtRef.current,
+      trackElapsed: trackItem.elapsed,
+      trackSampledAt: trackItem.playbackSampledAt
+    });
+  }
+
+  function displayTrackWhenAudible(nextTrackItem) {
+    clearTimeout(pendingTrackTimerRef.current);
+    pendingTrackTimerRef.current = 0;
+
+    const displayedTrack = displayedTrackRef.current;
+    const incomingIdentity = nextTrackItem.playbackId || nextTrackItem.playedAt;
+    const displayedIdentity = displayedTrack.playbackId || displayedTrack.playedAt;
+    const isNewPlayback = Boolean(
+      incomingIdentity && displayedIdentity && incomingIdentity !== displayedIdentity
+    );
+    const transitionDelay = isNewPlayback ? getTransitionDelayForTrack(nextTrackItem) : null;
+
+    if (
+      isNewPlayback
+      && playingRef.current
+      && !Number.isFinite(streamPositionZeroAtRef.current)
+      && performance.now() - streamRequestStartedAtRef.current < 15000
+    ) {
+      pendingTrackRef.current = nextTrackItem;
+      pendingTrackTimerRef.current = window.setTimeout(() => {
+        const pendingTrack = pendingTrackRef.current;
+        if (pendingTrack) displayTrackWhenAudible(pendingTrack);
+      }, 200);
+      return;
+    }
+
+    if (isNewPlayback && Number.isFinite(transitionDelay) && transitionDelay > 0) {
+      pendingTrackRef.current = nextTrackItem;
+      pendingTrackTimerRef.current = window.setTimeout(() => {
+        const pendingTrack = pendingTrackRef.current;
+        if (pendingTrack) displayTrackWhenAudible(pendingTrack);
+      }, transitionDelay * 1000);
+      return;
+    }
+    displayTrack(nextTrackItem);
+  }
+
   function toggleFavoriteItem(item) {
     const key = `${item.artist}—${item.title}`;
     const isFav = favorites.some((f) => f.key === key);
@@ -1613,18 +2033,20 @@ export default function App() {
     async function loadTrack() {
       if (requestInFlight) return;
       requestInFlight = true;
+      const requestStartedAt = performance.now();
       try {
         const response = await fetch("/api/now-playing", { cache: "no-store" });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         if (!active) return;
         const receivedAt = performance.now();
+        const estimatedResponseTransit = Math.min(2.5, Math.max(0, receivedAt - requestStartedAt) / 2000);
         const incomingTrack = {
           title: data.title || "Programação ao vivo",
           artist: data.artist || "Rádio Marinha",
           album: data.album || "Rádio Marinha Online",
           cover: data.cover || FALLBACK_COVER,
-          elapsed: Number(data.elapsed) || 0,
+          elapsed: (Number(data.elapsed) || 0) + estimatedResponseTransit,
           duration: Number(data.duration) || 0,
           durationReliable: Boolean(data.durationReliable),
           syncAllowed: Boolean(data.syncAllowed),
@@ -1643,24 +2065,7 @@ export default function App() {
           setNextTrack(null);
         }
 
-        const displayedTrack = displayedTrackRef.current;
-        const incomingIdentity = incomingTrack.playbackId || incomingTrack.playedAt;
-        const displayedIdentity = displayedTrack.playbackId || displayedTrack.playedAt;
-        const isNewPlayback = Boolean(
-          incomingIdentity && displayedIdentity && incomingIdentity !== displayedIdentity
-        );
-        const remainingTransportDelay = streamLatencyRef.current - incomingTrack.elapsed;
-
-        if (playingRef.current && isNewPlayback && remainingTransportDelay > .15) {
-          clearTimeout(pendingTrackTimerRef.current);
-          pendingTrackRef.current = incomingTrack;
-          pendingTrackTimerRef.current = window.setTimeout(
-            () => displayTrack(incomingTrack),
-            remainingTransportDelay * 1000
-          );
-        } else {
-          displayTrack(incomingTrack);
-        }
+        displayTrackWhenAudible(incomingTrack);
         setMessage("");
       } catch {
         if (active) setMessage("Os dados da programação estão temporariamente indisponíveis.");
@@ -1669,11 +2074,18 @@ export default function App() {
       }
     }
     loadTrack();
-    const interval = setInterval(loadTrack, 5000);
+    const interval = setInterval(loadTrack, 3000);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) void loadTrack();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("pageshow", refreshWhenVisible);
     return () => {
       active = false;
       clearInterval(interval);
       clearTimeout(pendingTrackTimerRef.current);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("pageshow", refreshWhenVisible);
     };
   }, []);
 
@@ -1733,6 +2145,7 @@ export default function App() {
   useEffect(() => {
     if (!track.artist || !track.title || track.artist === "Rádio Marinha") {
       setLyrics("");
+      setLyricsTrackKey(lyricsKey);
       setLyricsDuration(0);
       setArtistInfo(null);
       setLyricsLoading(false);
@@ -1755,6 +2168,7 @@ export default function App() {
     setLyricsLoading(true);
     setArtistLoading(true);
     setLyrics("");
+    setLyricsTrackKey("");
     setLyricsDuration(0);
     setArtistInfo(null);
 
@@ -1769,7 +2183,12 @@ export default function App() {
         setLyricsDuration(Number(lyricsResult.duration) || 0);
       })
       .catch(() => {})
-      .finally(() => { if (active) setLyricsLoading(false); });
+      .finally(() => {
+        if (active) {
+          setLyricsTrackKey(lyricsKey);
+          setLyricsLoading(false);
+        }
+      });
 
     fetch(`/api/artist?name=${encodeURIComponent(track.artist)}`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
@@ -1778,112 +2197,97 @@ export default function App() {
       .finally(() => { if (active) setArtistLoading(false); });
 
     return () => { active = false; controller.abort(); };
-  }, [track.album, track.artist, track.duration, track.durationReliable, track.playbackId, track.syncAllowed, track.title]);
+  }, [lyricsKey, track.album, track.artist, track.duration, track.durationReliable, track.playbackId, track.syncAllowed, track.title]);
 
   useEffect(() => () => {
     clearInterval(timerRef.current);
   }, []);
 
-  function getBufferedLatency() {
-    const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.currentTime) || !audio.buffered.length) return null;
-    try {
-      for (let index = 0; index < audio.buffered.length; index += 1) {
-        const rangeStart = audio.buffered.start(index);
-        const rangeEnd = audio.buffered.end(index);
-        if (audio.currentTime >= rangeStart - .05 && audio.currentTime <= rangeEnd + .05) {
-          const bufferedAhead = rangeEnd - audio.currentTime;
-          return Number.isFinite(bufferedAhead) && bufferedAhead >= 0 && bufferedAhead <= 45
-            ? bufferedAhead
-            : null;
-        }
-      }
-      return null;
-    } catch {
-      return null;
-    }
-  }
+  function establishStreamClockAnchor(audio, readyAt, requestStartedAt) {
+    const mediaTime = Number(audio?.currentTime) || 0;
+    const bufferedAhead = readBufferedAhead(audio, mediaTime);
+    const startupLatency = estimateStreamStartupDelay(
+      requestStartedAt,
+      readyAt,
+      bufferedAhead
+    );
+    const positionZeroAt = createStreamPositionZeroAt(readyAt, mediaTime, startupLatency);
+    if (!Number.isFinite(positionZeroAt)) return false;
 
-  function commitStreamLatency(value, immediate = false) {
-    if (!Number.isFinite(value)) return;
-    const measured = Math.max(0, Math.min(45, value));
-    const current = streamLatencyRef.current;
-    const next = immediate
-      ? measured
-      : measured > current
-        ? current * .65 + measured * .35
-        : current * .92 + measured * .08;
-    if (Math.abs(next - current) < .02) return;
-    streamLatencyRef.current = next;
-    setStreamLatency(next);
-  }
-
-  function measureStreamLatency(force = false) {
-    const now = performance.now();
-    if (!force && now - streamLatencyMeasuredAtRef.current < 1000) return;
-    streamLatencyMeasuredAtRef.current = now;
-    const bufferedAhead = getBufferedLatency();
-    if (bufferedAhead !== null) {
-      commitStreamLatency(bufferedAhead + streamTransportOverheadRef.current);
-    }
+    streamPositionZeroAtRef.current = positionZeroAt;
+    lastStreamMediaTimeRef.current = mediaTime;
+    streamMediaSourceRef.current = audio?.currentSrc || audio?.src || "";
+    setStreamPositionZeroAt(positionZeroAt);
+    return true;
   }
 
   function handleAudioWaiting() {
-    if (streamHasStartedRef.current && !streamWaitingStartedAtRef.current) {
+    if (!streamWaitingStartedAtRef.current) {
       streamWaitingStartedAtRef.current = performance.now();
-      streamWaitingMediaTimeRef.current = Number(audioRef.current?.currentTime) || 0;
     }
     setLoading(true);
   }
 
   function handleAudioPlaying() {
     const now = performance.now();
-    const bufferedAhead = getBufferedLatency();
-    const waitingDuration = streamWaitingStartedAtRef.current
-      ? Math.max(0, (now - streamWaitingStartedAtRef.current) / 1000)
-      : 0;
-    const mediaTime = Number(audioRef.current?.currentTime) || 0;
-    const mediaAdvancedWhileWaiting = Math.max(0, mediaTime - streamWaitingMediaTimeRef.current);
-    const stalledFor = Math.max(0, waitingDuration - mediaAdvancedWhileWaiting);
+    const audio = audioRef.current;
+    const mediaTime = Number(audio?.currentTime) || 0;
+    const mediaSource = audio?.currentSrc || audio?.src || "";
+    const mediaRewound = lastStreamMediaTimeRef.current !== null
+      && mediaTime < lastStreamMediaTimeRef.current - .35;
+    const sourceChanged = Boolean(
+      streamMediaSourceRef.current
+      && mediaSource
+      && streamMediaSourceRef.current !== mediaSource
+    );
 
-    if (!streamHasStartedRef.current) {
-      const startupLatency = streamRequestStartedAtRef.current
-        ? Math.max(0, (now - streamRequestStartedAtRef.current) / 1000)
-        : 0;
-      streamTransportOverheadRef.current = 0;
-      commitStreamLatency(
-        bufferedAhead === null ? Math.min(startupLatency, 3) : bufferedAhead,
-        true
-      );
-      streamHasStartedRef.current = true;
-    } else {
-      if (stalledFor) {
-        streamTransportOverheadRef.current = Math.min(
-          45,
-          streamTransportOverheadRef.current + stalledFor
-        );
-      }
-      if (bufferedAhead !== null) {
-        commitStreamLatency(
-          bufferedAhead + streamTransportOverheadRef.current,
-          stalledFor > 0
-        );
-      } else if (stalledFor) {
-        commitStreamLatency(streamLatencyRef.current + stalledFor, true);
-      }
+    if (!Number.isFinite(streamPositionZeroAtRef.current) || mediaRewound || sourceChanged) {
+      const requestStartedAt = Number.isFinite(streamPositionZeroAtRef.current)
+        ? (streamWaitingStartedAtRef.current || now)
+        : (streamRequestStartedAtRef.current || streamWaitingStartedAtRef.current || now);
+      establishStreamClockAnchor(audio, now, requestStartedAt);
     }
 
+    lastStreamMediaTimeRef.current = mediaTime;
+    streamMediaSourceRef.current = mediaSource;
     streamWaitingStartedAtRef.current = 0;
-    streamWaitingMediaTimeRef.current = 0;
+    setAudioClockReady(true);
     setLoading(false);
+    if (pendingTrackRef.current) displayTrackWhenAudible(pendingTrackRef.current);
+  }
+
+  function handleAudioTimeUpdate() {
+    const audio = audioRef.current;
+    const mediaTime = Number(audio?.currentTime);
+    if (!audio || !Number.isFinite(mediaTime)) return;
+    const mediaSource = audio.currentSrc || audio.src || "";
+    const mediaRewound = lastStreamMediaTimeRef.current !== null
+      && mediaTime < lastStreamMediaTimeRef.current - .35;
+    const sourceChanged = Boolean(
+      streamMediaSourceRef.current
+      && mediaSource
+      && streamMediaSourceRef.current !== mediaSource
+    );
+    if (Number.isFinite(streamPositionZeroAtRef.current) && (mediaRewound || sourceChanged)) {
+      const now = performance.now();
+      establishStreamClockAnchor(audio, now, streamWaitingStartedAtRef.current || now);
+      setAudioClockReady(true);
+    }
+    lastStreamMediaTimeRef.current = mediaTime;
+    streamMediaSourceRef.current = mediaSource;
   }
 
   function handleAudioPause() {
     playingRef.current = false;
     setPlaying(false);
     setLoading(false);
+    setAudioClockReady(false);
+    streamRequestStartedAtRef.current = 0;
     streamWaitingStartedAtRef.current = 0;
-    streamWaitingMediaTimeRef.current = 0;
+    lastStreamMediaTimeRef.current = null;
+    streamMediaSourceRef.current = "";
+    streamPositionZeroAtRef.current = null;
+    setStreamPositionZeroAt(null);
     flushPendingTrack();
   }
 
@@ -1892,14 +2296,13 @@ export default function App() {
     setMessage("");
     try {
       setLoading(true);
+      setAudioClockReady(false);
       streamRequestStartedAtRef.current = performance.now();
       streamWaitingStartedAtRef.current = 0;
-      streamWaitingMediaTimeRef.current = 0;
-      streamHasStartedRef.current = false;
-      streamLatencyMeasuredAtRef.current = 0;
-      streamLatencyRef.current = 0;
-      streamTransportOverheadRef.current = 0;
-      setStreamLatency(0);
+      lastStreamMediaTimeRef.current = null;
+      streamMediaSourceRef.current = "";
+      streamPositionZeroAtRef.current = null;
+      setStreamPositionZeroAt(null);
       audioRef.current.src = `${STREAM_URL}?live=${Date.now()}`;
       await audioRef.current.play();
     } catch {
@@ -2028,12 +2431,27 @@ export default function App() {
                 <span className="mini-wave" aria-hidden="true">{Array.from({ length: 7 }, (_, index) => <i key={index} style={{ "--bar": index }} />)}</span>
                 <span className="eyebrow">{loading ? "SUSPENDENDO" : playing ? "NAVEGANDO" : "RÁDIO FUNDEADA"}</span>
               </div>
-              <img className="cover" src={effectiveCover} alt={`Capa de ${track.title}`} onError={useFallbackCover} />
+              <CoverProgress
+                cover={effectiveCover}
+                duration={lyricsDuration || (track.durationReliable ? track.duration : 0)}
+                elapsed={track.elapsed}
+                playbackSampledAt={track.playbackSampledAt}
+                title={track.title}
+                trackKey={playbackKey}
+                onError={useFallbackCover}
+              />
             </div>
             <div className="track-copy">
               <h1>{track.title}</h1>
               <p className="artist">{track.artist}</p>
-              <p className="album program-now"><span>PROGRAMA NO AR</span>{currentProgram}</p>
+              <p className="album program-now">
+                <span className="program-now-badge">PROGRAMA NO AR</span>
+                <span className="program-now-copy">
+                  <strong>{currentProgram.title}</strong>
+                  <span className="program-now-separator" aria-hidden="true">—</span>
+                  <span className="program-now-description">{currentProgram.description}</span>
+                </span>
+              </p>
             </div>
 
             <div className="main-controls">
@@ -2115,17 +2533,18 @@ export default function App() {
                     </div>
                     <span>{track.artist}</span>
                   </div>
-                  {lyricsLoading ? (
+                  {lyricsLoading || lyricsTrackKey !== lyricsKey ? (
                     <div className="content-loading"><span className="spinner" /> Buscando letra…</div>
                   ) : lyrics ? (
                     <AutoScrollingLyrics
-                      active={playing && !loading}
+                      audioClockReady={audioClockReady}
+                      audioPlaying={playing}
                       audioRef={audioRef}
                       duration={lyricsDuration || (track.durationReliable ? track.duration : 0)}
                       elapsed={track.elapsed}
-                      latency={streamLatency}
                       lyrics={lyrics}
                       playbackSampledAt={track.playbackSampledAt}
+                      streamPositionZeroAt={streamPositionZeroAt}
                       trackKey={playbackKey}
                       title={track.title}
                     />
@@ -2308,6 +2727,7 @@ export default function App() {
                           setCityState(item.uf);
                           localStorage.setItem('radio_user_city', item.city);
                           localStorage.setItem('radio_user_state', item.uf);
+                          loadEventsForCity(item.city);
                         }}
                       >
                         {item.city}
@@ -2623,19 +3043,28 @@ export default function App() {
         ref={audioRef}
         preload="none"
         onPlay={() => {
+          if (!streamRequestStartedAtRef.current) {
+            streamRequestStartedAtRef.current = performance.now();
+          }
           playingRef.current = true;
           setPlaying(true);
         }}
         onPause={handleAudioPause}
         onWaiting={handleAudioWaiting}
         onPlaying={handleAudioPlaying}
-        onProgress={() => measureStreamLatency()}
-        onTimeUpdate={() => measureStreamLatency()}
+        onTimeUpdate={handleAudioTimeUpdate}
         onEnded={handleAudioPause}
         onError={() => {
           playingRef.current = false;
           setPlaying(false);
           setLoading(false);
+          setAudioClockReady(false);
+          streamRequestStartedAtRef.current = 0;
+          streamWaitingStartedAtRef.current = 0;
+          lastStreamMediaTimeRef.current = null;
+          streamMediaSourceRef.current = "";
+          streamPositionZeroAtRef.current = null;
+          setStreamPositionZeroAt(null);
           setMessage("Não foi possível conectar à transmissão.");
           flushPendingTrack();
         }}
