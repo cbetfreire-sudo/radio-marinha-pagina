@@ -770,12 +770,14 @@ function SloganOceanWave({ active }) {
     const shipImage = new Image();
     shipImage.decoding = "async";
     const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+    const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let reduceMotion = reducedMotionQuery.matches;
     const minimumFrameTime = coarsePointer ? 1000 / 30 : 0;
     const waterlineRatio = .37;
 
     const smoothstep = (value) => value * value * (3 - 2 * value);
     const navigationStrength = () => smoothstep(seaEnergy);
-    const waveAmplitude = () => .1 + navigationStrength() * .9;
+    const waveAmplitude = () => .12 + navigationStrength() * .88;
     const waveScale = () => Math.max(.78, Math.min(1.45, height / 30));
     const vesselWidth = () => Math.max(112, Math.min(156, width * .62));
     const obstacleX = () => Math.max(
@@ -786,14 +788,20 @@ function SloganOceanWave({ active }) {
       const scale = waveScale();
       const baseline = height * waterlineRatio;
       const amplitude = waveAmplitude();
+      const swellPhase = x * .017 - time * .69 + 2.1;
+      const primaryPhase = x * .034 - time * 1.52;
+      const chopPhase = x * .086 - time * 2.48 + .85;
+      const crossSeaPhase = x * .052 + time * .94 + 1.7;
+      const groupEnergy = 1 + Math.sin(x * .006 - time * .2 + .4) * .1;
       const directWave = baseline
-        - Math.sin(x * .036 - time * 1.76) * 3.15 * scale * amplitude
-        - Math.sin(x * .079 - time * 2.62 + .85) * 1.05 * scale * amplitude
-        - Math.sin(x * .018 - time * .82 + 2.1) * .65 * scale * amplitude;
+        - (Math.sin(primaryPhase) + Math.sin(primaryPhase * 2 + .38) * .2) * 3.75 * scale * amplitude * groupEnergy
+        - Math.sin(chopPhase) * 1.28 * scale * amplitude
+        - Math.sin(swellPhase) * .9 * scale * amplitude
+        - Math.sin(crossSeaPhase) * .52 * scale * amplitude;
       const distanceToObstacle = obstacleX() - x;
       if (distanceToObstacle <= 0) return directWave;
       const reflectionFalloff = Math.exp(-distanceToObstacle / Math.max(46, width * .25));
-      const reflectedWave = Math.sin((obstacleX() * 2 - x) * .043 - time * 1.34 + .4) * .58 * scale * reflectionFalloff * amplitude;
+      const reflectedWave = Math.sin((obstacleX() * 2 - x) * .047 - time * 1.18 + .4) * .72 * scale * reflectionFalloff * amplitude;
       return directWave - reflectedWave;
     };
     const surfaceX = (x, time) => {
@@ -801,30 +809,42 @@ function SloganOceanWave({ active }) {
       const scale = waveScale();
       const amplitude = waveAmplitude();
       return x
-        + Math.cos(x * .036 - time * 1.76) * .52 * scale * amplitude
-        + Math.cos(x * .079 - time * 2.62 + .85) * .16 * scale * amplitude;
+        + Math.cos(x * .034 - time * 1.52) * .88 * scale * amplitude
+        + Math.cos(x * .068 - time * 3.04 + .38) * .18 * scale * amplitude
+        + Math.cos(x * .086 - time * 2.48 + .85) * .24 * scale * amplitude
+        - Math.cos(x * .052 + time * .94 + 1.7) * .1 * scale * amplitude;
     };
     const deepY = (x, time) => {
       const scale = waveScale();
       const amplitude = waveAmplitude();
-      return height * .48
-        - Math.sin(x * .028 - time * .88 + 1.45) * 2.15 * scale * amplitude
-        - Math.sin(x * .057 - time * 1.18) * .6 * scale * amplitude;
+      return height * .495
+        - Math.sin(x * .025 - time * .78 + 1.45) * 2.65 * scale * amplitude
+        - Math.sin(x * .054 - time * 1.1) * .78 * scale * amplitude;
+    };
+    const middleY = (x, time) => {
+      const scale = waveScale();
+      const amplitude = waveAmplitude();
+      return height * .435
+        - Math.sin(x * .03 - time * 1.02 + .7) * 2.9 * scale * amplitude
+        - Math.sin(x * .071 - time * 1.74 + 2.35) * .82 * scale * amplitude;
     };
 
     const createGradients = () => {
       const deepFill = context.createLinearGradient(0, height * .35, 0, height * .55);
       deepFill.addColorStop(0, "rgba(20, 126, 167, .18)");
       deepFill.addColorStop(1, "rgba(4, 50, 78, 0)");
+      const middleFill = context.createLinearGradient(0, height * .38, 0, height * .55);
+      middleFill.addColorStop(0, "rgba(24, 145, 184, .2)");
+      middleFill.addColorStop(1, "rgba(4, 50, 78, .015)");
       const waterFill = context.createLinearGradient(0, height * waterlineRatio, 0, height * .55);
-      waterFill.addColorStop(0, "rgba(48, 192, 224, .38)");
-      waterFill.addColorStop(.5, "rgba(12, 112, 157, .25)");
+      waterFill.addColorStop(0, "rgba(54, 198, 226, .42)");
+      waterFill.addColorStop(.5, "rgba(12, 112, 157, .29)");
       waterFill.addColorStop(1, "rgba(4, 49, 76, .03)");
       const surfaceStroke = context.createLinearGradient(0, 0, width, 0);
       surfaceStroke.addColorStop(0, "#117ca9");
       surfaceStroke.addColorStop(.48, "#55d1ed");
       surfaceStroke.addColorStop(1, "#1786b3");
-      gradients = { deepFill, waterFill, surfaceStroke };
+      gradients = { deepFill, middleFill, waterFill, surfaceStroke };
     };
 
     const traceSurface = (waveFunction, time, horizontalDisplacement) => {
@@ -852,13 +872,17 @@ function SloganOceanWave({ active }) {
 
     const drawCrestFoam = (time) => {
       const scale = waveScale();
-      const threshold = height * waterlineRatio - 2.15 * scale * waveAmplitude();
+      const amplitude = waveAmplitude();
+      const threshold = height * waterlineRatio - 2.7 * scale * amplitude;
       let drawing = false;
       context.beginPath();
       for (let x = 0; x <= width + 2; x += 1.5) {
         const y = surfaceY(x, time);
+        const previousY = surfaceY(x - 1.5, time);
         const nextY = surfaceY(x + 1.5, time);
-        const isCrest = y < threshold && Math.abs(nextY - y) < .8 * scale;
+        const slope = (nextY - previousY) * .5;
+        const curvature = previousY + nextY - y * 2;
+        const isCrest = y < threshold && Math.abs(slope) < .7 * scale && curvature > -.04 * scale;
         if (isCrest && !drawing) {
           context.moveTo(surfaceX(x, time), y - .3);
           drawing = true;
@@ -875,6 +899,18 @@ function SloganOceanWave({ active }) {
       context.shadowBlur = 2.5 * scale;
       context.stroke();
       context.shadowBlur = 0;
+
+      context.beginPath();
+      for (let x = 5; x <= width; x += 9) {
+        const y = surfaceY(x, time);
+        if (y < threshold - .45 * scale && Math.sin(x * .41 + time * 1.7) > -.1) {
+          context.moveTo(surfaceX(x, time) - 1.3 * scale, y + .7 * scale);
+          context.quadraticCurveTo(surfaceX(x, time), y - .15 * scale, surfaceX(x, time) + 1.8 * scale, y + .45 * scale);
+        }
+      }
+      context.strokeStyle = "rgba(229, 251, 255, .48)";
+      context.lineWidth = Math.max(.55, .68 * scale);
+      context.stroke();
     };
 
     const spawnImpact = (x, y) => {
@@ -951,10 +987,10 @@ function SloganOceanWave({ active }) {
       const isStaticFrame = deltaTime <= 0;
 
       const surgeTarget = (
-        Math.sin(time * .54 + .65) * .85
-        + Math.sin(time * .23 + 2.25) * .35
+        Math.sin(time * .48 + .65) * 1.08
+        + Math.sin(time * .21 + 2.25) * .46
       ) * scale * navigationStrength();
-      [shipSurge, shipSurgeVelocity] = updateSpring(shipSurge, shipSurgeVelocity, surgeTarget, .32, .95, deltaTime);
+      [shipSurge, shipSurgeVelocity] = updateSpring(shipSurge, shipSurgeVelocity, surgeTarget, .28, .92, deltaTime);
 
       const x = obstacleX() + shipSurge;
       const waterSamples = [[.08, .1], [.27, .22], [.5, .36], [.73, .22], [.92, .1]];
@@ -964,10 +1000,10 @@ function SloganOceanWave({ active }) {
       ) - .2 * scale;
       const heaveBaseline = height * waterlineRatio - .2 * scale;
       const heaveTarget = Math.max(
-        heaveBaseline - 2.8 * scale * waveAmplitude(),
-        Math.min(heaveBaseline + 2.8 * scale * waveAmplitude(), sampledHeave)
+        heaveBaseline - 4.35 * scale * waveAmplitude(),
+        Math.min(heaveBaseline + 4.35 * scale * waveAmplitude(), sampledHeave)
       );
-      [shipHeave, shipHeaveVelocity] = updateSpring(shipHeave, shipHeaveVelocity, heaveTarget, .95, .82, deltaTime);
+      [shipHeave, shipHeaveVelocity] = updateSpring(shipHeave, shipHeaveVelocity, heaveTarget, .74, .78, deltaTime);
 
       const bowWaterY = (
         surfaceY(x + renderedWidth * .07, time)
@@ -979,10 +1015,10 @@ function SloganOceanWave({ active }) {
       ) * .5;
 
       const pitchTarget = Math.max(
-        -.048,
-        Math.min(.048, Math.atan2(sternWaterY - bowWaterY, renderedWidth * .76) * .82)
+        -.068,
+        Math.min(.068, Math.atan2(sternWaterY - bowWaterY, renderedWidth * .76) * 1.06)
       );
-      [shipPitch, shipPitchVelocity] = updateSpring(shipPitch, shipPitchVelocity, pitchTarget, .78, .86, deltaTime);
+      [shipPitch, shipPitchVelocity] = updateSpring(shipPitch, shipPitchVelocity, pitchTarget, .66, .8, deltaTime);
 
       const waveVelocity = !isStaticFrame && previousBowWater !== null ? (bowWaterY - previousBowWater) / deltaTime : 0;
       const closingVelocity = shipHeaveVelocity - waveVelocity;
@@ -1231,12 +1267,13 @@ function SloganOceanWave({ active }) {
     const drawFrame = (elapsed, deltaTime, isStatic = false) => {
       context.clearRect(0, 0, width, height);
       drawWaveLayer(deepY, elapsed, gradients.deepFill, "rgba(52, 148, 186, .34)", Math.max(.65, waveScale() * .75));
+      drawWaveLayer(middleY, elapsed, gradients.middleFill, "rgba(63, 174, 207, .28)", Math.max(.58, waveScale() * .65));
       drawWaveLayer(surfaceY, elapsed, gradients.waterFill, gradients.surfaceStroke, Math.max(1.15, waveScale() * 1.55), surfaceX);
       drawCrestFoam(elapsed);
 
       const impactPoint = drawShip(elapsed, isStatic ? 0 : deltaTime);
       const impactStrength = impactPoint.impactStrength;
-      if (navigationStrength() > .45 && shipReady && !isStatic && impactStrength > .42 && previousImpact <= .42 && elapsed - lastSplashTime > 1.35) {
+      if (navigationStrength() > .45 && shipReady && !isStatic && impactStrength > .38 && previousImpact <= .38 && elapsed - lastSplashTime > 1.1) {
         spawnImpact(impactPoint.x, impactPoint.y);
         lastSplashTime = elapsed;
       }
@@ -1258,8 +1295,8 @@ function SloganOceanWave({ active }) {
       seaEnergy += (target - seaEnergy) * (1 - Math.exp(-deltaTime / seaResponse));
       anchorProgress += (target - anchorProgress) * (1 - Math.exp(-deltaTime / anchorResponse));
       pendulumTime += deltaTime;
-      simulationTime += deltaTime * (.025 + navigationStrength() * .975);
-      drawFrame(simulationTime, deltaTime);
+      if (!reduceMotion) simulationTime += deltaTime * (.025 + navigationStrength() * .975);
+      drawFrame(simulationTime || .8, reduceMotion ? 0 : deltaTime, reduceMotion);
       animationFrame = requestAnimationFrame(render);
     };
 
@@ -1295,6 +1332,11 @@ function SloganOceanWave({ active }) {
       startAnimation();
     };
     const handleVisibility = () => document.hidden ? stopAnimation() : startAnimation();
+    const handleReducedMotion = (event) => {
+      reduceMotion = event.matches;
+      particles = [];
+      startAnimation();
+    };
     const handleShipLoad = () => {
       shipReady = true;
       startAnimation();
@@ -1310,6 +1352,7 @@ function SloganOceanWave({ active }) {
     intersectionObserver?.observe(canvas);
     if (!resizeObserver) window.addEventListener("resize", resizeCanvas);
     document.addEventListener("visibilitychange", handleVisibility);
+    reducedMotionQuery.addEventListener?.("change", handleReducedMotion);
     shipImage.addEventListener("load", handleShipLoad);
     shipImage.src = "/imagens/navio-f200-v4.png";
     resizeCanvas();
@@ -1320,6 +1363,7 @@ function SloganOceanWave({ active }) {
       intersectionObserver?.disconnect();
       if (!resizeObserver) window.removeEventListener("resize", resizeCanvas);
       document.removeEventListener("visibilitychange", handleVisibility);
+      reducedMotionQuery.removeEventListener?.("change", handleReducedMotion);
       shipImage.removeEventListener("load", handleShipLoad);
     };
   }, []);

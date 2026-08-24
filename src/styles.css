@@ -150,9 +150,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
 
 /* Slogan wave area */
 .sailing-slogan { position: relative; display: flex !important; flex-direction: column; align-items: center; width: max-content; margin: 0 !important; overflow: visible; line-height: 1; text-transform: none !important; letter-spacing: .025em !important; white-space: nowrap; }
-.slogan-words { position: relative; z-index: 1; display: block; margin: 0; padding-bottom: 1px; text-align: center; line-height: 1.1; }
+.slogan-words { position: relative; z-index: 1; display: block; margin: 0; padding-bottom: 1px; text-align: center; line-height: 1.1; transform: translateY(4px); }
 .slogan-wake { position: relative; z-index: 2; left: auto; bottom: auto; display: block; flex: 0 0 46px; width: 100%; height: 46px; overflow: visible; pointer-events: none; }
-.slogan-wave-canvas { position: absolute; z-index: 2; top: -24px; left: 0; display: block; width: 100%; height: 124px; pointer-events: none; -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 98.5%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 98.5%, transparent 100%); }
+.slogan-wave-canvas { position: absolute; z-index: 2; top: -24px; left: 0; display: block; width: 100%; height: 124px; pointer-events: none; transform: translateY(6px); -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 98.5%, transparent 100%); mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 98.5%, transparent 100%); }
 
 /* Live indicator */
 .live { display: flex; align-items: center; gap: 9px; color: var(--pearl); font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6); }
