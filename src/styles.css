@@ -2303,11 +2303,26 @@ footer {
   .quick-actions .action-icon-wrap { width: 30px; height: 30px; }
   .quick-actions .action-icon { width: 17px; height: 17px; }
   .quick-actions button > span:last-child { font-size: .64rem; margin-top: 4px; font-weight: 700; }
-  .content-panel { min-height: 0; height: 100%; padding: clamp(14px, 1.8vh, 26px) clamp(18px, 2.5vw, 36px); overflow: hidden; }
+  .content-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+    height: 100%;
+    padding: clamp(14px, 1.8vh, 26px) clamp(18px, 2.5vw, 36px);
+    overflow: hidden;
+  }
   .tabs { flex: 0 0 auto; }
-  .tab-content { min-height: 0; height: 100%; flex: 1 1 0%; padding: clamp(16px, 2vh, 24px) clamp(18px, 2vw, 28px); margin-top: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .tab-content {
+    min-height: 0;
+    height: auto;
+    padding: clamp(16px, 2vh, 24px) clamp(18px, 2vw, 28px);
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
   .lyrics-content, .artist-content, .recent-content, .favorites-content, .welcome-content { display: flex; flex-direction: column; height: 100%; min-height: 0; flex: 1 1 0%; overflow: hidden; }
-  .lyrics-scroll, .biography, .recent-timeline, .favorites-list { flex: 1 1 0%; height: 100%; min-height: 0; overflow-y: auto; }
+  .lyrics-scroll, .biography, .recent-timeline, .favorites-list { flex: 1 1 0%; height: auto; min-height: 0; overflow-y: auto; }
   .content-loading, .empty-state { flex: 1; min-height: 0; }
   footer { padding-block: 8px; font-size: .62rem; flex-shrink: 0; }
 }
@@ -2336,6 +2351,58 @@ footer {
   .quick-actions button > span:last-child { font-size: .58rem; margin-top: 3px; font-weight: 700; }
   .tab-content { padding: 12px 16px; margin-top: 6px; }
   footer { display: none; }
+}
+
+/* ── Portrait Large Displays (Vertical TVs / Signage) ───── */
+@media (min-width: 921px) and (orientation: portrait) {
+  .shell { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 46%) minmax(0, 54%);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .hero {
+    height: 100%;
+    min-height: 0;
+    gap: clamp(6px, .8vh, 12px);
+    padding: clamp(12px, 1.4vh, 22px) clamp(28px, 5vw, 64px);
+    overflow: hidden;
+  }
+  .cover-wrap { width: min(15vh, 230px); max-width: 230px; }
+  .realistic-helm-button { width: clamp(100px, 8vh, 124px); height: clamp(100px, 8vh, 124px); }
+  .volume-control { padding-block: 6px; }
+  .quick-actions { margin-top: 0; }
+  .quick-actions button { min-height: 58px; padding-block: 6px; }
+  .player-panel.content-panel {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    padding: clamp(14px, 1.4vh, 24px) clamp(28px, 5vw, 64px);
+    overflow: hidden;
+  }
+  .tab-content {
+    display: flex;
+    height: auto;
+    min-height: 0;
+    flex-direction: column;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .lyrics-content,
+  .lyrics-view,
+  .lyrics-scroll-shell { min-height: 0; }
+  .lyrics-scroll {
+    flex: 1 1 0%;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 
 /* ── Mobile ──────────────────────────────────────────────── */
