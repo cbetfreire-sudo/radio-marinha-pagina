@@ -2360,7 +2360,7 @@ footer {
   .layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 46%) minmax(0, 54%);
+    grid-template-rows: minmax(0, 52%) minmax(0, 48%);
     height: 100%;
     min-height: 0;
     overflow: hidden;
