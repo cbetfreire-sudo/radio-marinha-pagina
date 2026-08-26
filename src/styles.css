@@ -2354,7 +2354,8 @@ footer {
 }
 
 /* ── Portrait Large Displays (Vertical TVs / Signage) ───── */
-@media (min-width: 921px) and (orientation: portrait) {
+@media (min-width: 921px) and (orientation: portrait),
+       (min-height: 1000px) and (max-aspect-ratio: 4 / 5) {
   .shell { grid-template-rows: auto minmax(0, 1fr) auto; }
   .layout {
     display: grid;
