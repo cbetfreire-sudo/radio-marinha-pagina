@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 import {
   createStreamPositionZeroAt,
@@ -218,103 +218,11 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
   const [activeLine, setActiveLine] = useState(-1);
   const [manualPause, setManualPause] = useState(false);
   const [timingAdjustment, setTimingAdjustment] = useState(0);
-  const [translationRetry, setTranslationRetry] = useState(0);
-  const [translationMode, setTranslationMode] = useState(() => {
-    const storedMode = getStored("radio-lyrics-translation-mode", "original");
-    return ["original", "bilingual", "translated"].includes(storedMode) ? storedMode : "original";
-  });
-  const [translationState, setTranslationState] = useState({
-    status: "idle",
-    sourceLanguage: null,
-    translations: {},
-    message: ""
-  });
   const [followEnabled, setFollowEnabled] = useState(() => {
     const storedPreference = getStored("radio-lyrics-follow", null);
     if (typeof storedPreference === "boolean") return storedPreference;
     return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   });
-
-  useEffect(() => {
-    const rows = parsedLyrics.rows
-      .filter((row) => !row.blank && row.text)
-      .map((row) => ({ id: row.id, text: row.text }));
-    if (!rows.length) {
-      setTranslationState({ status: "idle", sourceLanguage: null, translations: {}, message: "" });
-      return undefined;
-    }
-    if (translationMode === "original") {
-      setTranslationState({ status: "idle", sourceLanguage: null, translations: {}, message: "" });
-      return undefined;
-    }
-
-    const controller = new AbortController();
-    let active = true;
-    setTranslationState({ status: "loading", sourceLanguage: null, translations: {}, message: "" });
-
-    fetch("/api/translate-lyrics", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lines: rows }),
-      signal: controller.signal
-    })
-      .then(async (response) => {
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          const error = new Error(result.message || "Não foi possível preparar a tradução.");
-          error.code = result.error || "translation_error";
-          throw error;
-        }
-        return result;
-      })
-      .then((result) => {
-        if (!active) return;
-        if (!result.available) {
-          setTranslationState({
-            status: "unavailable",
-            sourceLanguage: result.sourceLanguage || null,
-            translations: {},
-            message: ""
-          });
-          return;
-        }
-
-        const expectedIds = new Set(rows.map(({ id }) => id));
-        const translatedEntries = Array.isArray(result.translations)
-          ? result.translations.filter((entry) => (
-              expectedIds.has(String(entry?.id || ""))
-              && typeof entry?.text === "string"
-              && entry.text.trim()
-            ))
-          : [];
-        const translations = Object.fromEntries(
-          translatedEntries.map((entry) => [String(entry.id), entry.text.trim()])
-        );
-        const complete = Object.keys(translations).length === rows.length;
-        setTranslationState({
-          status: complete ? "ready" : "partial",
-          sourceLanguage: result.sourceLanguage || null,
-          translations,
-          message: complete ? "" : "Algumas linhas permanecerão no idioma original."
-        });
-      })
-      .catch((error) => {
-        if (!active || error.name === "AbortError") return;
-        const limited = ["translation_rate_limited", "translation_quota_exceeded"].includes(error.code);
-        const configurationError = ["translation_not_configured", "translation_credentials_rejected"].includes(error.code);
-        setTranslationState({
-          status: limited ? "limited" : configurationError ? "not-configured" : "error",
-          sourceLanguage: null,
-          translations: {},
-          message: error.message || "Não foi possível preparar a tradução."
-        });
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [parsedLyrics, trackKey, translationMode, translationRetry]);
 
   useEffect(() => {
     const previousPlayback = playbackRef.current;
@@ -351,12 +259,6 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
   useEffect(() => {
     if (following) needsSnapRef.current = true;
   }, [following, trackKey]);
-
-  useLayoutEffect(() => {
-    if (following && ["ready", "partial"].includes(translationState.status)) {
-      needsSnapRef.current = true;
-    }
-  }, [following, translationMode, translationState.status]);
 
   useEffect(() => {
     const requestSnap = () => {
@@ -489,11 +391,6 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
     setTimingAdjustment((current) => Math.max(-30, Math.min(30, current + seconds)));
   };
 
-  const changeTranslationMode = (mode) => {
-    setTranslationMode(mode);
-    localStorage.setItem("radio-lyrics-translation-mode", JSON.stringify(mode));
-  };
-
   const controlLabel = manualPause
     ? "Voltar à linha atual"
     : followEnabled
@@ -501,17 +398,6 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
       : "Acompanhar letra";
   const controlClass = following ? "active" : "";
   const controlSymbol = following ? "Ⅱ" : "▶";
-  const translationAvailable = ["ready", "partial"].includes(translationState.status);
-  const sourceLanguageName = translationState.sourceLanguage === "es" ? "Espanhol" : "Inglês";
-  const displayedLanguage = translationAvailable && translationMode === "translated"
-    ? translationState.status === "partial"
-      ? "tradução em português com trechos no idioma original"
-      : "tradução em português"
-    : translationAvailable && translationMode === "bilingual"
-      ? translationState.status === "partial"
-        ? "original e tradução parcial em português"
-        : "original e tradução em português"
-      : "idioma original";
   const activeTimestamp = activeLine >= 0 ? parsedLyrics.rows[activeLine]?.time : null;
   const nextTimestamp = activeTimestamp === null || activeTimestamp === undefined
     ? null
@@ -573,66 +459,12 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
           </button>
         </div>
       </div>
-      {translationState.status === "loading" && (
-        <div className="lyrics-translation-status" role="status" aria-live="polite">
-          <span className="translation-spinner" aria-hidden="true" />
-          Detectando idioma e preparando tradução…
-        </div>
-      )}
-      <div className="lyrics-language-bar">
-        <span className="lyrics-language-label">
-          {translationAvailable ? (
-            <>{sourceLanguageName} <b aria-hidden="true">→</b> Português</>
-          ) : (
-            <>Tradução sob demanda</>
-          )}
-        </span>
-        <fieldset className="lyrics-language-switch">
-          <legend>Exibição da letra</legend>
-          {[
-            ["original", "Original"],
-            ["bilingual", "Bilíngue"],
-            ["translated", "Português"]
-          ].map(([mode, label]) => (
-            <label key={mode}>
-              <input
-                type="radio"
-                name={`lyrics-language-${trackKey}`}
-                value={mode}
-                checked={translationMode === mode}
-                onChange={() => changeTranslationMode(mode)}
-              />
-              <span>{label}</span>
-            </label>
-          ))}
-        </fieldset>
-      </div>
-      {translationState.status === "partial" && (
-        <div className="lyrics-translation-status is-warning" role="status">
-          {translationState.message}
-        </div>
-      )}
-      {translationState.status === "unavailable" && (
-        <div className="lyrics-translation-status is-neutral" role="status">
-          {translationState.sourceLanguage === "pt"
-            ? "A letra já está em português."
-            : "A tradução automática está disponível para letras em inglês e espanhol."}
-        </div>
-      )}
-      {["not-configured", "limited", "error"].includes(translationState.status) && (
-        <div className="lyrics-translation-status is-warning" role="status" aria-live="polite">
-          <span>{translationState.status === "not-configured" ? translationState.message || "Tradução ainda não configurada." : translationState.message}</span>
-          {translationState.status === "error" && (
-            <button type="button" onClick={() => setTranslationRetry((current) => current + 1)}>Tentar novamente</button>
-          )}
-        </div>
-      )}
       <div className="lyrics-scroll-shell">
         <div
           ref={scrollRef}
           className={`lyrics-scroll${following ? " is-following" : ""}`}
           tabIndex="0"
-          aria-label={`Letra de ${title}, ${displayedLanguage}`}
+          aria-label={`Letra original de ${title}`}
           onWheel={pauseForInteraction}
           onKeyDown={(event) => {
             if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) pauseForInteraction();
@@ -678,17 +510,6 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
                   : parsedLyrics.synced && activeLine >= 0
                     ? "is-nearby"
                     : "";
-            const translatedText = translationState.translations[row.id];
-            const hasTranslation = Boolean(translationAvailable && translatedText);
-            const hasDistinctTranslation = Boolean(
-              hasTranslation
-              && translatedText.localeCompare(row.text, undefined, { sensitivity: "base" }) !== 0
-            );
-            const showOriginal = translationMode !== "translated" || !hasTranslation;
-            const showTranslation = hasTranslation && (
-              translationMode === "translated"
-              || (translationMode === "bilingual" && hasDistinctTranslation)
-            );
             return (
               <p
                 ref={(element) => { lineRefs.current[index] = element; }}
@@ -696,24 +517,7 @@ function AutoScrollingLyrics({ audioClockReady, audioPlaying, audioRef, duration
                 aria-current={parsedLyrics.synced && index === activeLine ? "true" : undefined}
                 key={row.id}
               >
-                {showOriginal && (
-                  <span
-                    className="lyric-original"
-                    lang={translationState.sourceLanguage || undefined}
-                    dir="auto"
-                  >
-                    {row.text}
-                  </span>
-                )}
-                {showTranslation && (
-                  <span
-                    className={`lyric-translation${translationMode === "translated" ? " is-primary" : ""}`}
-                    lang="pt-BR"
-                    dir="auto"
-                  >
-                    {translatedText}
-                  </span>
-                )}
+                <span className="lyric-original" dir="auto">{row.text}</span>
               </p>
             );
           })}
