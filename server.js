@@ -80,6 +80,13 @@ app.use((error, _req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/imagens', express.static(path.join(__dirname, 'imagens')));
 
+app.get(['/politica_privacidade', '/politica_privacidade.html', '/politica-privacidade', '/privacidade'], (_req, res) => {
+    const fileInPublic = path.join(__dirname, 'public', 'politica_privacidade.html');
+    const fileInRoot = path.join(__dirname, 'politica_privacidade.html');
+    const targetFile = fs.existsSync(fileInPublic) ? fileInPublic : fileInRoot;
+    return res.sendFile(targetFile);
+});
+
 let nowPlaying = {
     title: "Rádio Marinha",
     artist: "Programação ao vivo",

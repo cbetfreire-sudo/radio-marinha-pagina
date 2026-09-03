@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Política de Privacidade | Aplicativo Marinha do Brasil</title>
+    <meta name="description" content="Política de Privacidade oficial do aplicativo Marinha do Brasil, em conformidade com a LGPD e as políticas do Google Health Connect.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #002244;
+            --primary-dark: #00162e;
+            --accent: #0056b3;
+            --accent-gold: #c5a059;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-page: #f8fafc;
+            --bg-card: #ffffff;
+            --border: #e2e8f0;
+            --tag-bg: #e0f2fe;
+            --tag-text: #0369a1;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-main);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Top Bar Institutional */
+        .gov-bar {
+            background-color: var(--primary-dark);
+            color: #ffffff;
+            padding: 10px 24px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--accent-gold);
+        }
+
+        .gov-bar .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* Header */
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, #0a3663 100%);
+            color: #ffffff;
+            padding: 56px 24px 48px;
+            text-align: center;
+        }
+
+        .header-content {
+            max-width: 860px;
+            margin: 0 auto;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: #ffffff;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.82rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.75px;
+            margin-bottom: 16px;
+        }
+
+        header h1 {
+            font-size: 2.3rem;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            color: #cbd5e1;
+            font-size: 1.05rem;
+        }
+
+        .meta-info {
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: #94a3b8;
+        }
+
+        /* Main Container */
+        main {
+            max-width: 900px;
+            margin: -24px auto 60px;
+            padding: 0 20px;
+        }
+
+        .content-card {
+            background-color: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+            padding: 40px 48px;
+        }
+
+        @media (max-width: 768px) {
+            .content-card {
+                padding: 24px 20px;
+            }
+            header h1 {
+                font-size: 1.75rem;
+            }
+        }
+
+        /* Typography & Structure */
+        section {
+            margin-bottom: 36px;
+            padding-bottom: 28px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        section:last-of-type {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        h2 {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        h3 {
+            font-size: 1.08rem;
+            font-weight: 600;
+            color: var(--accent);
+            margin: 20px 0 10px;
+        }
+
+        p {
+            margin-bottom: 14px;
+            color: var(--text-main);
+        }
+
+        ul {
+            list-style: disc;
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+
+        li {
+            margin-bottom: 8px;
+            color: var(--text-main);
+        }
+
+        li strong {
+            color: var(--primary-dark);
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--primary-dark);
+            text-decoration: underline;
+        }
+
+        /* Callout Box */
+        .callout {
+            background-color: #f0f7ff;
+            border-left: 4px solid var(--accent);
+            padding: 16px 20px;
+            border-radius: 0 8px 8px 0;
+            margin: 20px 0;
+        }
+
+        .callout-title {
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+
+        .callout p {
+            margin-bottom: 0;
+            font-size: 0.92rem;
+            color: #334155;
+        }
+
+        .permission-badge {
+            display: inline-block;
+            background-color: var(--tag-bg);
+            color: var(--tag-text);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 0.82rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-right: 6px;
+            font-weight: 600;
+        }
+
+        /* Footer */
+        footer {
+            background-color: var(--primary-dark);
+            color: #94a3b8;
+            text-align: center;
+            padding: 32px 20px;
+            font-size: 0.85rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        footer p {
+            color: #94a3b8;
+            margin-bottom: 6px;
+        }
+
+        footer a {
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Barra Institucional -->
+    <div class="gov-bar">
+        <div class="brand">
+            ⚓ Marinha do Brasil
+        </div>
+        <div>
+            <span>Comunicação Social</span>
+        </div>
+    </div>
+
+    <!-- Cabeçalho -->
+    <header>
+        <div class="header-content">
+            <span class="badge">Documento Oficial</span>
+            <h1>Política de Privacidade</h1>
+            <p>Aplicativo Oficial Marinha do Brasil</p>
+            <div class="meta-info">
+                <strong>Última atualização:</strong> 01 de setembro de 2026
+            </div>
+        </div>
+    </header>
+
+    <!-- Conteúdo Principal -->
+    <main>
+        <div class="content-card">
+            
+            <!-- Seção 1 -->
+            <section>
+                <h2>1. Identificação e Controlador</h2>
+                <p>Esta Política de Privacidade descreve como o aplicativo oficial <strong>Marinha do Brasil</strong>, disponibilizado pela Marinha do Brasil, coleta, utiliza, armazena, compartilha e protege os dados pessoais e dados do dispositivo dos usuários.</p>
+                <ul>
+                    <li><strong>Controlador dos dados:</strong> Marinha do Brasil</li>
+                    <li><strong>Portal Institucional:</strong> <a href="https://www.marinha.mil.br/" target="_blank" rel="noopener noreferrer">https://www.marinha.mil.br/</a></li>
+                    <li><strong>Canal de Ouvidoria e Encarregado (DPO):</strong> <a href="https://www.marinha.mil.br/ouvidoria" target="_blank" rel="noopener noreferrer">https://www.marinha.mil.br/ouvidoria</a></li>
+                </ul>
+                <p>O tratamento de dados pessoais observa integralmente a <strong>Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018 — LGPD)</strong>, o Marco Civil da Internet (Lei nº 12.965/2014) e as normas aplicáveis à Administração Pública Federal.</p>
+            </section>
+
+            <!-- Seção 2 -->
+            <section>
+                <h2>2. Dados Pessoais Tratados</h2>
+                <p>Conforme os recursos utilizados e as permissões expressamente concedidas pelo usuário, o aplicativo poderá tratar:</p>
+                
+                <h3>a) Dados de Conta e Perfil</h3>
+                <ul>
+                    <li>Nome completo e nome de exibição;</li>
+                    <li>Endereço de e-mail institucional ou pessoal;</li>
+                    <li>Número de telefone (quando voluntariamente informado);</li>
+                    <li>Foto de perfil;</li>
+                    <li>Identificador único de usuário (ID interno de autenticação);</li>
+                    <li>Condição de militar ou civil, Posto/Graduação e Organização Militar (OM);</li>
+                    <li>Preferência de visibilidade do perfil (público ou privado).</li>
+                </ul>
+
+                <h3>b) Dados de Atividade Física, Treino e Saúde</h3>
+                <ul>
+                    <li>Sessões de corrida, caminhada e ciclismo (data, horário de início, término e duração);</li>
+                    <li>Distância percorrida, ritmo médio (pace) e velocidade média;</li>
+                    <li>Altimetria e ganho de elevação em sessões de corrida e ciclismo;</li>
+                    <li>Rota e traçado geográfico do percurso percorrido (mediante autorização específica);</li>
+                    <li>Registros voluntários de hidratação e consumo de água;</li>
+                    <li>Peso, altura, idade e gênero (quando voluntariamente informados para calibração de metas físicas);</li>
+                    <li>Pontuações, níveis, metas e evolução em programas de condicionamento (ex.: Treinamento Físico Militar - TFM).</li>
+                </ul>
+
+                <h3>c) Dados de Localização</h3>
+                <ul>
+                    <li><strong>Localização em primeiro plano:</strong> Utilizada, mediante autorização do usuário, para gravar rotas esportivas, exibir informações meteorológicas locais e identificar Organizações Militares e pontos de interesse próximos.</li>
+                    <li><strong>Localização em segundo plano:</strong> Utilizada exclusivamente durante a gravação ativa de uma atividade física voluntariamente iniciada pelo usuário, garantindo a continuidade do registro com a tela bloqueada.</li>
+                </ul>
+
+                <h3>d) Dados Técnicos e de Diagnóstico</h3>
+                <ul>
+                    <li>Modelo e fabricante do dispositivo;</li>
+                    <li>Sistema operacional e versão do aplicativo;</li>
+                    <li>Identificadores técnicos de instalação e registros de falhas (Crashlytics);</li>
+                    <li>Métricas de desempenho e token para envio de notificações (Push).</li>
+                </ul>
+            </section>
+
+            <!-- Seção 3 -->
+            <section>
+                <h2>3. Finalidades do Tratamento</h2>
+                <p>Os dados pessoais são tratados estritamente para as seguintes finalidades legítimas:</p>
+                <ul>
+                    <li>Autenticar, gerenciar e assegurar o acesso à conta do usuário;</li>
+                    <li>Apresentar o histórico esportivo, estatísticas de treino e indicadores de evolução física;</li>
+                    <li>Importar e sincronizar atividades físicas autorizadas via Conexão Saúde (Google Health Connect) e Apple Health;</li>
+                    <li>Calcular métricas de desempenho (distância, tempo, ritmo, elevação e mapas de percurso);</li>
+                    <li>Disponibilizar rankings esportivos institucionais para usuários que optarem expressamente por participar;</li>
+                    <li>Apresentar previsão do tempo e serviços baseados na localização do usuário;</li>
+                    <li>Enviar comunicações, comunicados institucionais e alertas solicitados pelo usuário;</li>
+                    <li>Prevenir fraudes, corrigir falhas e aprimorar a estabilidade e segurança do aplicativo.</li>
+                </ul>
+            </section>
+
+            <!-- Seção 4 -->
+            <section>
+                <h2>4. Atividade Física, Sensores e Integrações Esportivas</h2>
+                <p>O monitoramento de atividades físicas no aplicativo é realizado por meio de sensores do próprio dispositivo e de integrações expressamente autorizadas pelo usuário.</p>
+                
+                <div class="callout">
+                    <div class="callout-title">Permissões de Atividade Utilizadas pelo Aplicativo:</div>
+                    <p style="margin-bottom: 6px;"><span class="permission-badge">ACTIVITY_RECOGNITION</span> Reconhecimento de atividade física para contagem de passos e cadência durante treinos de corrida e caminhada.</p>
+                    <p><span class="permission-badge">LOCALIZAÇÃO (GPS)</span> Registro do traçado e distância percorrida em tempo real durante treinos ao ar livre iniciados pelo usuário.</p>
+                </div>
+
+                <h3>Privacidade e Uso dos Dados Esportivos:</h3>
+                <ul>
+                    <li>Os dados esportivos <strong>não são vendidos</strong> ou comercializados a terceiros sob nenhuma hipótese;</li>
+                    <li>Os dados <strong>não são utilizados para publicidade</strong>, marketing direcionado ou perfilamento comercial;</li>
+                    <li>Os dados <strong>não são utilizados para diagnóstico médico</strong>, nem para avaliação de crédito ou benefícios administrativos;</li>
+                    <li>O usuário pode revogar permissões de sensores e localização a qualquer momento nas configurações do dispositivo.</li>
+                </ul>
+            </section>
+
+            <!-- Seção 5 -->
+            <section>
+                <h2>5. Perfis Públicos e Rankings</h2>
+                <p>A participação em rankings e a visibilidade de informações para outros usuários são <strong>estritamente opcionais</strong>:</p>
+                <ul>
+                    <li><strong>Perfil Privado (Padrão):</strong> Os dados de treinos e históricos são restritos ao próprio usuário.</li>
+                    <li><strong>Perfil Público e Rankings:</strong> Caso o usuário decida participar de rankings, apenas o nome de exibição, foto, graduação/OM, pontuação geral e quilometragem acumulada ficarão visíveis para outros participantes.</li>
+                    <li><strong>Privacidade de Rotas:</strong> O traçado geográfico detalhado e as coordenadas precisas de rotas <strong>nunca são compartilhadas publicamente em rankings</strong>.</li>
+                </ul>
+            </section>
+
+            <!-- Seção 6 -->
+            <section>
+                <h2>6. Compartilhamento e Operadores de Dados</h2>
+                <p>Para a operação técnica do aplicativo, são utilizados prestadores de serviços de infraestrutura estritamente necessários:</p>
+                <ul>
+                    <li><strong>Google Firebase (Google LLC):</strong> Serviços de autenticação segura, banco de dados em nuvem, métricas de estabilidade (Crashlytics) e notificações;</li>
+                    <li><strong>Google Health Connect e Apple Health:</strong> Plataformas de interoperabilidade de dados de saúde e exercícios autorizadas pelo usuário;</li>
+                    <li><strong>Provedores de Mapas e Clima (ex.: Open-Meteo, OpenWeather, Mapbox/Google Maps):</strong> Exibição de dados climáticos e renderização cartográfica.</li>
+                </ul>
+                <p>Todos os operadores atuam em estrita conformidade com as normas de proteção de dados e segurança da informação.</p>
+            </section>
+
+            <!-- Seção 7 -->
+            <section>
+                <h2>7. Segurança e Armazenamento</h2>
+                <p>Adotamos medidas técnicas e organizacionais rigorosas para resguardar a integridade e a confidencialidade dos dados tratados, incluindo:</p>
+                <ul>
+                    <li>Transmissão de dados sob protocolos criptografados (HTTPS / TLS 1.3);</li>
+                    <li>Criptografia de dados em repouso nos bancos de dados;</li>
+                    <li>Controle de privilégios de acesso restrito a pessoal autorizado;</li>
+                    <li>Armazenamento local protegido pelas proteções de sandbox do dispositivo.</li>
+                </ul>
+            </section>
+
+            <!-- Seção 8 -->
+            <section>
+                <h2>8. Retenção e Exclusão de Dados</h2>
+                <p>Os dados serão retidos apenas pelo período necessário para o cumprimento das finalidades declaradas:</p>
+                <ul>
+                    <li><strong>Dados de Conta:</strong> Mantidos enquanto a conta do usuário permanecer ativa;</li>
+                    <li><strong>Registros de Treinos:</strong> Mantidos até a exclusão voluntária pelo usuário ou encerramento da conta;</li>
+                    <li><strong>Logs Técnicos:</strong> Mantidos por até 180 dias para fins de auditoria e segurança.</li>
+                </ul>
+
+                <h3>Como Solicitar a Exclusão dos Dados ou da Conta:</h3>
+                <ul>
+                    <li><strong>Pelo Aplicativo (no modo qualidade de vida):</strong> O usuário pode solicitar o encerramento da conta diretamente na opção <em>Qualidade de vida &gt; Perfil &gt; Excluir Conta</em>.</li>
+                    <li><strong>Por Canal Externo:</strong> A exclusão de dados e da conta pode ser requerida formalmente a qualquer momento através da Ouvidoria da Marinha: <a href="https://www.marinha.mil.br/ouvidoria" target="_blank" rel="noopener noreferrer">https://www.marinha.mil.br/ouvidoria</a>.</li>
+                </ul>
+            </section>
+
+            <!-- Seção 9 -->
+            <section>
+                <h2>9. Direitos do Titular de Dados (LGPD)</h2>
+                <p>Nos termos do artigo 18 da Lei nº 13.709/2018 (LGPD), o usuário poderá, a qualquer momento e mediante requisição:</p>
+                <ul>
+                    <li>Confirmar a existência de tratamento de seus dados;</li>
+                    <li>Acessar os dados tratados pelo aplicativo;</li>
+                    <li>Corrigir dados incompletos, inexatos ou desatualizados;</li>
+                    <li>Solicitar a anonimização, bloqueio ou eliminação de dados desnecessários;</li>
+                    <li>Revogar os consentimentos concedidos para permissões de saúde e geolocalização.</li>
+                </ul>
+                <p>As solicitações relativas à LGPD devem ser formalizadas por meio do canal: <a href="https://www.marinha.mil.br/ouvidoria" target="_blank" rel="noopener noreferrer">https://www.marinha.mil.br/ouvidoria</a>.</p>
+            </section>
+
+            <!-- Seção 10 -->
+            <section>
+                <h2>10. Alterações nesta Política</h2>
+                <p>Esta Política de Privacidade poderá passar por atualizações periódicas decorrentes de melhorias no aplicativo ou adequações legais. A versão em vigor estará sempre acessível nesta URL pública e no menu interno do aplicativo.</p>
+            </section>
+
+        </div>
+    </main>
+
+    <!-- Rodapé -->
+    <footer>
+        <p>© 2026 Marinha do Brasil. Todos os direitos reservados.</p>
+        <p>Desenvolvido para atender aos padrões de transparência da LGPD e Google Play.</p>
+    </footer>
+
+</body>
+</html>
