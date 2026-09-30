@@ -95,7 +95,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
   pointer-events: none;
   background:
     linear-gradient(180deg, rgba(11, 20, 38, 0.25) 0%, rgba(15, 29, 53, 0.40) 50%, rgba(11, 20, 38, 0.55) 100%),
-    url("/imagens/fundo_da_radio.jpg") center / cover no-repeat;
+    url("/imagens/fundo_da_radio2.jpg") center / cover no-repeat;
 }
 .ambient::after { display: none; }
 
@@ -186,6 +186,29 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
   background: linear-gradient(140deg, rgba(30, 107, 138, 0.04), transparent 60%);
 }
 .hero::-webkit-scrollbar { display: none; }
+.hero-submarine {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+}
+.hero-submarine canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.hero > .cover-wrap,
+.hero > .track-copy,
+.hero > .main-controls,
+.hero > .volume-control,
+.hero > .up-next-card,
+.hero > .quick-actions,
+.hero > .message {
+  position: relative;
+  z-index: 1;
+}
 
 /* Cover */
 .cover-wrap {
@@ -2296,7 +2319,7 @@ footer {
     filter: none;
     background:
       linear-gradient(180deg, rgba(11, 20, 38, 0.50), rgba(15, 29, 53, 0.65)),
-      url("/imagens/fundo_da_radio.jpg") center / cover no-repeat;
+      url("/imagens/fundo_da_radio2.jpg") center / cover no-repeat;
   }
   .ambient::after { inset: -8%; width: auto; height: auto; transform: none; background: linear-gradient(180deg, rgba(11, 20, 38, 0.24), rgba(21, 42, 71, 0.30)); background-size: 140% 140%; animation-duration: 44s; }
   .shell {
@@ -2312,8 +2335,8 @@ footer {
     border-radius: 24px;
     background: linear-gradient(180deg, rgba(21, 42, 71, 0.42), rgba(15, 29, 53, 0.38));
     box-shadow: 0 20px 56px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
-    -webkit-backdrop-filter: blur(2px) saturate(1.0);
-    backdrop-filter: blur(2px) saturate(1.0);
+    -webkit-backdrop-filter: blur(6px) saturate(1.0);
+    backdrop-filter: blur(6px) saturate(1.0);
   }
   .topbar {
     position: relative;

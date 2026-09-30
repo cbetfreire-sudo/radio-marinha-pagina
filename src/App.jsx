@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
+import SubmarineScene from "./SubmarineScene.jsx";
 import {
   createStreamPositionZeroAt,
   estimateStreamStartupDelay,
@@ -2273,6 +2274,7 @@ export default function App() {
 
         <div className="layout">
           <section className="hero">
+            <SubmarineScene playing={playing} accent={coverPalette?.secondary ?? "42, 143, 180"} />
             <div className="cover-wrap">
               <div className="now-indicator" aria-label={loading ? "Suspendendo" : playing ? "Navegando" : "Rádio fundeada"}>
                 <span className="now-dot" aria-hidden="true" />
