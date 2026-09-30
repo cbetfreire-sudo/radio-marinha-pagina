@@ -2,8 +2,9 @@ import React, { useEffect, useRef } from "react";
 
 // Port do cenário do app (marinha_app/lib/components/radio_submarine):
 // mesma malha do Riachuelo (variante S43, Almirante Karam), mesma câmera, mesmos
-// rumos e a mesma esteira da hélice. No intervalo entre duas travessias, o
-// UH-17 do SuperCard Naval sobrevoa o alto da tela.
+// rumos e a mesma esteira da hélice. No intervalo entre duas travessias, uma
+// aeronave do SuperCard Naval sobrevoa o alto da tela: o UH-17 e o AF-1
+// Skyhawk se revezam.
 
 const HULL_LENGTH = 71.62;
 const HULL_BEAM = 6.2;
@@ -13,7 +14,7 @@ const PROPELLER_Y = -1.5;
 const PROPELLER_RADIUS = 2.2;
 const PROPELLER_REVS = 1.75;
 const PROPELLER_CENTER_Y = -1.55;
-// Ciclo da cena: o submarino cruza, o mar fica vazio um pouco, o UH-17
+// Ciclo da cena: o submarino cruza, o mar fica vazio um pouco, a aeronave
 // sobrevoa, o mar descansa de novo e o ciclo recomeça.
 const CROSSING = 34;
 const PAUSE = 5;
@@ -26,9 +27,10 @@ const DEFAULT_ACCENT = [0, 229, 255];
 
 // ── Malha 3D ──────────────────────────────────────────────────────────────
 //
-// Um só programa desenha o submarino e o helicóptero. Cada modelo traz suas
+// Um só programa desenha o submarino e as aeronaves. Cada modelo traz suas
 // partes giratórias (hélice, rotor principal, Fenestron), com o eixo e o
-// centro de giro do ship_mesh.dart, e o próprio jeito de ser iluminado.
+// centro de giro do ship_mesh.dart, as partes que não aparecem na cena e o
+// próprio jeito de ser iluminado.
 
 const vertexSource = `
 attribute vec3 aPosition;
@@ -44,6 +46,7 @@ uniform float uElevation;
 uniform float uTrim;
 uniform float uPitch;
 uniform float uRoll;
+uniform float uYaw;
 uniform vec3 uPivot;
 uniform float uSpinAxis;
 uniform vec3 uSpinCenter;
@@ -71,10 +74,10 @@ void main() {
     n = turn(n, uSpinAxis, uSpinAngle);
     fn = turn(fn, uSpinAxis, uSpinAngle);
   }
-  // Atitude de voo: inclinação lateral e depois arfagem, em torno do pivô.
-  p = turn(turn(p - uPivot, 1.0, uRoll), 3.0, uPitch);
-  n = turn(turn(n, 1.0, uRoll), 3.0, uPitch);
-  fn = turn(turn(fn, 1.0, uRoll), 3.0, uPitch);
+  // Atitude de voo: inclinação lateral, arfagem e guinada, em torno do pivô.
+  p = turn(turn(turn(p - uPivot, 1.0, uRoll), 3.0, uPitch), 2.0, uYaw);
+  n = turn(turn(turn(n, 1.0, uRoll), 3.0, uPitch), 2.0, uYaw);
+  fn = turn(turn(turn(fn, 1.0, uRoll), 3.0, uPitch), 2.0, uYaw);
 
   float ca = cos(uAzimuth), sa = sin(uAzimuth);
   float ce = cos(uElevation), se = sin(uElevation);
@@ -144,13 +147,27 @@ const HELICOPTER_MODEL = {
   tintAmount: [0.03, 0.05, 0.16]
 };
 
+// AF-1 Skyhawk (A-4KU, N-1001) do SuperCard Naval. A malha vem com o trem
+// baixado; em voo ele fica recolhido, então rodas, pernas e portas (12_ e 13_)
+// ficam de fora. Não há poços modelados: a barriga fica lisa.
+const SKYHAWK_MODEL = {
+  url: "/imagens/af1.mesh.json",
+  pivot: [0, 2.0, 0],
+  hidden: /^1[23]_/,
+  spinners: [],
+  exposure: 1.05,
+  tint: [0.62, 0.74, 0.84],
+  tintAmount: [0.03, 0.05, 0.16]
+};
+
 // Desindexa a malha: cada canto leva a normal geométrica da face, que decide o
 // descarte das faces de costas exatamente como no app.
 function buildGeometry(data, model) {
   const meshes = [...data.meshes, ...(model.variant ? data.variants?.[model.variant]?.meshes || [] : [])];
   const groups = [[], ...model.spinners.map(() => [])];
   for (const mesh of meshes) {
-    const spinner = model.spinners.findIndex(item => item.test.test(mesh.name || ""));
+    if (model.hidden?.test(mesh.name || "")) continue;
+    const spinner =model.spinners.findIndex(item => item.test.test(mesh.name || ""));
     const target = groups[spinner + 1];
     const color = data.materials[mesh.material].color;
     const bias = mesh.depthBias || 0;
@@ -199,7 +216,7 @@ function createRenderer(canvas) {
     ["aPosition", 3, 0], ["aNormal", 3, 3], ["aColor", 3, 6], ["aFaceNormal", 3, 9], ["aBias", 1, 12]
   ].map(([name, size, offset]) => ({ location: gl.getAttribLocation(program, name), size, offset }));
   const uniforms = Object.fromEntries(
-    ["Size", "Center", "Scale", "Azimuth", "Elevation", "Trim", "Pitch", "Roll", "Pivot",
+    ["Size", "Center", "Scale", "Azimuth", "Elevation", "Trim", "Pitch", "Roll", "Yaw", "Pivot",
       "SpinAxis", "SpinCenter", "SpinAngle", "Exposure", "Tint", "TintAmount"]
       .map(name => [name, gl.getUniformLocation(program, `u${name}`)])
   );
@@ -241,6 +258,7 @@ function createRenderer(canvas) {
         gl.uniform1f(uniforms.Trim, pass.trim || 0);
         gl.uniform1f(uniforms.Pitch, pass.pitch || 0);
         gl.uniform1f(uniforms.Roll, pass.roll || 0);
+        gl.uniform1f(uniforms.Yaw, pass.yaw || 0);
         gl.uniform3fv(uniforms.Pivot, model.pivot);
         gl.uniform1f(uniforms.Exposure, model.exposure);
         gl.uniform3fv(uniforms.Tint, model.tint);
@@ -570,14 +588,12 @@ function drawWake(ctx, ratio, width, pass, now, accent) {
   }
 }
 
-function drawBackdrop(canvas, pass, now, width, height, ratio, accent) {
+function drawBackdrop(canvas, width, height, ratio, paint) {
   resize(canvas, width, height, ratio);
   const ctx = canvas.getContext("2d");
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, width, height);
-  if (!pass) return;
-  drawShadow(ctx, ratio, pass);
-  drawWake(ctx, ratio, width, pass, now, accent);
+  paint(ctx);
 }
 
 function parseAccent(value) {
@@ -599,34 +615,137 @@ function easeInOut(x) {
   return 3 * (1 - u) * u * u + u * u * u;
 }
 
-// ── Sobrevoo do UH-17 ─────────────────────────────────────────────────────
+// ── Sobrevoo do UH-17 e do Skyhawk ────────────────────────────────────────
 //
-// Entre duas travessias do submarino, o helicóptero cruza a tela. A
-// derrota usa a mesma física da travessia do submarino (velocidade constante
-// sobre um arco, câmera de furo de agulha), só que acima da câmera: vê-se o
-// helicóptero um pouco de baixo, de nariz baixo, inclinando nas curvas.
+// Entre duas travessias do submarino, uma aeronave cruza a tela, uma de cada
+// vez, e faz uma manobra no caminho. A derrota usa a mesma física da
+// travessia do submarino (velocidade constante sobre um arco, câmera de furo
+// de agulha), só que acima da câmera: vê-se a aeronave um pouco de baixo,
+// inclinando nas curvas.
 
-const HELI_LENGTH = 11.7;
-const HELI_START = CROSSING + PAUSE;
-const HELI_DURATION = FLIGHT;
-const ROTOR_REVS = 2.3;
+const FLIGHT_START = CROSSING + PAUSE;
 
-// Tamanho do helicóptero na tela. É o único ajuste para deixá-lo maior ou
-// menor; a distância e a perspectiva saem daí.
-const HELI_SCALE = 1.6;
+// Sobe e desce devagar nas pontas: derivada nula em 0 e em 1.
+const ease = x => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
+const bump = x => Math.sin(Math.PI * x) ** 2;
+const LOOP_RADIUS = 5.5;
 
-// [lane] vem de layoutOf: o centro da capa do álbum, na altura do qual o
-// helicóptero voa, passando por trás dela como por trás de um prédio (cover);
-// o teto, para o rotor não ser cortado no alto da coluna (ceiling), e o piso,
-// acima do topo da vela do submarino (floor), todos em fração da altura; a
-// proporção da tela e a escala.
-function randomFlight(lane = { cover: 0.2, ceiling: 0.01, floor: 0.5, aspect: 0.6, scale: 1 }) {
+// Manobras. [duration] em segundos; [speed(x)], com x de 0 a 1 ao longo da
+// manobra, é a fração da velocidade de cruzeiro com que a derrota anda (1 se
+// omitida); [rise] é quanto ela sobe acima da derrota e [sweep], quanto se
+// afasta dela para frente ou para trás, em metros, para caber na faixa e na
+// tela; [pose(x, dir)] dá os giros (roll, pitch, yaw, em radianos) e os
+// deslocamentos na referência do rumo (along, above, lateral, em metros).
+// [dir] é o lado, sorteado a cada voo.
+const MANEUVERS = {
+  // Tonneau: um giro completo em torno do eixo longitudinal.
+  roll: {
+    duration: 1.6,
+    pose: (x, dir) => ({ roll: dir * 2 * Math.PI * ease(x), pitch: 0.05 * bump(x) })
+  },
+  // Dois tonneaux seguidos.
+  doubleRoll: {
+    duration: 2.6,
+    pose: (x, dir) => ({ roll: dir * 4 * Math.PI * ease(x), pitch: 0.06 * bump(x) })
+  },
+  // Tonneau barril: gira enquanto descreve uma hélice em volta da derrota,
+  // com o dorso sempre voltado para o centro dela.
+  barrelRoll: {
+    duration: 2.6,
+    rise: 3.6,
+    pose: (x, dir) => {
+      const phi = 2 * Math.PI * ease(x);
+      return { roll: dir * phi, pitch: 0.28 * Math.sin(phi), above: 1.8 * (1 - Math.cos(phi)), lateral: -dir * 1.8 * Math.sin(phi) };
+    }
+  },
+  // Looping: cabra até passar de dorso pelo alto e volta à derrota. A derrota
+  // quase para enquanto isso, e o avião segue em frente ao terminar.
+  loop: {
+    duration: 3.6,
+    rise: 2 * LOOP_RADIUS,
+    sweep: LOOP_RADIUS,
+    speed: x => (1 + Math.cos(2 * Math.PI * x)) / 2,
+    pose: x => {
+      const theta = 2 * Math.PI * ease(x);
+      return { pitch: theta, along: LOOP_RADIUS * Math.sin(theta), above: LOOP_RADIUS * (1 - Math.cos(theta)) };
+    }
+  },
+  // Cumprimento com as asas: três balanços de um lado para o outro.
+  wingRock: {
+    duration: 2.2,
+    pose: (x, dir) => ({ roll: dir * 0.8 * Math.sin(6 * Math.PI * x) * Math.sin(Math.PI * x) })
+  },
+  // Pirueta: o helicóptero gira em torno do mastro sem sair da derrota.
+  pirouette: {
+    duration: 2.8,
+    speed: x => 1 - 0.5 * bump(x),
+    pose: (x, dir) => ({ yaw: dir * 2 * Math.PI * ease(x) })
+  },
+  // Parada com pirueta: cabra para frear, para no ar, gira no lugar e
+  // arranca de nariz baixo.
+  hoverPirouette: {
+    duration: 6,
+    speed: x => (x < 0.22 ? Math.cos(Math.PI / 2 * x / 0.22) ** 2 : x > 0.78 ? Math.sin(Math.PI / 2 * (x - 0.78) / 0.22) ** 2 : 0),
+    pose: (x, dir) => {
+      const flare = x < 0.22 ? 0.32 * Math.sin(Math.PI * x / 0.22) : 0;
+      const dash = x > 0.78 ? -0.28 * Math.sin(Math.PI * (x - 0.78) / 0.22) : 0;
+      const hover = Math.min(1, Math.max(0, Math.min(x / 0.22, (1 - x) / 0.22)));
+      const spin = Math.max(0, Math.min(1, (x - 0.28) / 0.44));
+      return { pitch: flare + dash + 0.06 * hover, yaw: dir * 2 * Math.PI * ease(spin) };
+    }
+  },
+  // Reverência: reduz e abaixa o nariz, como quem cumprimenta.
+  bow: {
+    duration: 2.6,
+    speed: x => 1 - 0.75 * bump(x),
+    pose: x => ({ pitch: -0.42 * bump(x) })
+  },
+  // Balanço de um lado para o outro, como um aceno.
+  sway: {
+    duration: 2.4,
+    pose: (x, dir) => ({ roll: dir * 0.38 * Math.sin(4 * Math.PI * x) * Math.sin(Math.PI * x) })
+  }
+};
+
+// [length] é o comprimento em metros. [duration] é o tempo da travessia; quem
+// cruza mais depressa que a janela FLIGHT passa no meio dela. [scale] é o
+// tamanho na tela, o único ajuste para deixá-la maior ou menor; a distância e
+// a perspectiva saem daí. [revs] são as rotações do rotor por segundo;
+// [pitch], a arfagem de cruzeiro (o helicóptero vai de nariz baixo, o jato com
+// o nariz um pouco acima); [bank] realça a inclinação da curva, até
+// [maxBank]; [bob] é o balanço vertical, em metros. [maneuvers] é o repertório
+// de onde sai a manobra de cada passagem. [exhaust], quando há, é a saída do
+// bocal do motor: o centro e o raio interno, em metros, do generate_af1.mjs.
+const AIRCRAFT = [
+  {
+    model: HELICOPTER_MODEL, label: "helicóptero", length: 11.7, duration: FLIGHT, scale: 1.6, revs: 2.3, pitch: -0.06, bank: 4, maxBank: 0.26, bob: 0.18,
+    maneuvers: ["pirouette", "hoverPirouette", "bow", "sway"]
+  },
+  {
+    model: SKYHAWK_MODEL, label: "Skyhawk", length: 12.59, duration: 9, scale: 1.6, revs: 0, pitch: 0.03, bank: 12, maxBank: 0.6, bob: 0.05,
+    maneuvers: ["roll", "doubleRoll", "barrelRoll", "loop", "wingRock"],
+    exhaust: { at: [-6.29, 2.04, 0], radius: 0.32 }
+  }
+];
+
+const flightStart = aircraft => FLIGHT_START + (FLIGHT - aircraft.duration) / 2;
+
+// [lane] vem de layoutOf: o centro da capa do álbum, na altura do qual a
+// aeronave voa, passando por trás dela como por trás de um prédio (cover);
+// o teto, para o rotor ou a deriva não serem cortados no alto da coluna
+// (ceiling), e o piso, acima do topo da vela do submarino (floor), todos em
+// fração da altura; a caixa da capa (box), a proporção da tela e a escala.
+// [previous] é a manobra da passagem anterior desta aeronave, que não se
+// repete em seguida.
+function randomFlight(aircraft, lane = { cover: 0.2, ceiling: 0.01, floor: 0.5, aspect: 0.6, scale: 1 }, previous = null) {
   const jitter = span => (Math.random() * 2 - 1) * span;
-  const size = HELI_SCALE * lane.scale * (1 + jitter(0.12));
+  const size = aircraft.scale * lane.scale * (1 + jitter(0.12));
   const below = () => lane.cover + jitter(0.015);
   const offLeft = s => -s / 2 - 0.04;
   const offRight = s => 1 + s / 2 + 0.04;
-  const course = { dive: jitter(0.02), turnStart: 0, turnEnd: 1, ceilY: lane.ceiling, floorY: lane.floor };
+  const kinds = aircraft.maneuvers.filter(kind => kind !== previous);
+  const maneuver = { kind: kinds[Math.floor(Math.random() * kinds.length)], dir: Math.random() < 0.5 ? -1 : 1, pick: Math.random() };
+  const course = { aircraft, maneuver, box: lane.box, dive: jitter(0.02), turnStart: 0, turnEnd: 1, ceilY: lane.ceiling, floorY: lane.floor };
   // Sempre entra e sai pelas bordas, já grande: nascendo ao longe no meio da
   // tela, pequeno e escondido atrás da capa, ele passava despercebido.
   const entry = 0.26 * size, exit = 0.34 * size;
@@ -648,24 +767,85 @@ function randomFlight(lane = { cover: 0.2, ceiling: 0.01, floor: 0.5, aspect: 0.
   }
 }
 
-// Encaixa o voo na faixa dele: se os esquis descerem até a faixa do
-// submarino, sobe a derrota; se o rotor passar do alto da coluna, desce; e, se
-// não couber nas duas coisas, encolhe o helicóptero — ou seja, afasta-o da
-// câmera. Perto da câmera ele sobe na tela, então é o trajeto visível inteiro
-// que decide. Calculado uma vez por voo e tamanho de tela.
+// Fração do espaço que a aeronave e a manobra ocupam quando ela está em [u]
+// que fica à vista: dentro da tela e fora de trás da capa.
+function visibleShare(width, height, flight, u) {
+  const { length } = flight.aircraft;
+  const move = MANEUVERS[flight.maneuver.kind];
+  const q = passAt(width, height, flight, u, length);
+  const half = (0.5 * length * Math.max(0.4, q.broadside) + (move.sweep || 0)) * q.ppm;
+  const space = [q.x - half, q.y - (0.2 * length + (move.rise || 0)) * q.ppm, q.x + half, q.y + 0.2 * length * q.ppm];
+  const area = r => Math.max(0, r[2] - r[0]) * Math.max(0, r[3] - r[1]);
+  const clip = (r, c) => [Math.max(r[0], c[0]), Math.max(r[1], c[1]), Math.min(r[2], c[2]), Math.min(r[3], c[3])];
+  const onScreen = clip(space, [0, 0, width, height]);
+  let seen = area(onScreen);
+  const box = flight.box;
+  if (box) seen -= area(clip(onScreen, [box.left * width, box.top * height, box.right * width, box.bottom * height]));
+  return seen / area(space);
+}
+
+// Marca a hora da manobra: onde a aeronave fica mais à vista pelo tempo que
+// ela dura — no celular, a capa esconde o meio da tela. A travessia continua
+// com a mesma duração: se a manobra freia a derrota, o cruzeiro acelera um
+// pouco para compensar.
+function schedule(width, height, flight) {
+  const { aircraft, maneuver } = flight;
+  const move = MANEUVERS[maneuver.kind];
+  const total = aircraft.duration, span = move.duration;
+  const speed = move.speed || (() => 1);
+  const steps = 64, table = [0];
+  for (let i = 1; i <= steps; i += 1) table.push(table[i - 1] + (speed((i - 1) / steps) + speed(i / steps)) / (2 * steps));
+  const mean = table[steps];
+  const cruise = 1 / (total - span + mean * span);
+  const reach = cruise * span * mean;
+  const seen = Array.from({ length: 101 }, (_, k) => visibleShare(width, height, flight, k / 100));
+  const options = [];
+  for (let k = 12; k <= 88; k += 1) {
+    const center = k / 100;
+    const begin = center / cruise - span * mean / 2;
+    if (begin < 0.3 || begin + span > total - 0.3) continue;
+    const from = Math.max(0, Math.floor((center - reach / 2 - 0.02) * 100));
+    const to = Math.min(100, Math.ceil((center + reach / 2 + 0.02) * 100));
+    let sum = 0;
+    for (let j = from; j <= to; j += 1) sum += seen[j];
+    options.push({ begin, score: sum / (to - from + 1) });
+  }
+  const best = Math.max(0, ...options.map(option => option.score));
+  const good = options.filter(option => option.score >= best * 0.85);
+  const begin = good.length ? good[Math.floor(maneuver.pick * good.length)].begin : (total - span) / 2;
+  flight.plan = { begin, span, cruise, mean, table, from: cruise * begin, to: cruise * (begin + span * mean) };
+}
+
+// Quanto da derrota já foi percorrido [elapsed] segundos depois da entrada.
+function progress(flight, elapsed) {
+  const { begin, span, cruise, mean, table } = flight.plan;
+  if (elapsed <= begin) return Math.max(0, cruise * elapsed);
+  if (elapsed >= begin + span) return Math.min(1, cruise * (elapsed - span + mean * span));
+  const at = (elapsed - begin) / span * (table.length - 1), i = Math.floor(at);
+  const done = table[i] + (table[Math.min(i + 1, table.length - 1)] - table[i]) * (at - i);
+  return cruise * (begin + span * done);
+}
+
+// Encaixa o voo na faixa dele: se a aeronave descer até a faixa do
+// submarino, sobe a derrota; se o rotor ou a deriva passar do alto da coluna
+// — contando o que a manobra sobe —, desce; e, se não couber nas duas coisas,
+// encolhe a aeronave — ou seja, afasta-a da câmera. Perto da câmera ela sobe
+// na tela, então é o trajeto visível inteiro que decide.
 function clearance(width, height, flight) {
-  const key = `${width}x${height}`;
-  if (flight.clearKey === key) return flight.drop;
   const ceiling = (flight.ceilY ?? 0) * height;
   const floor = (flight.floorY ?? 1) * height;
+  const rise = MANEUVERS[flight.maneuver.kind].rise || 0;
+  const { from, to } = flight.plan;
   let drop = 0;
   for (let attempt = 0; attempt < 6; attempt += 1) {
     let top = Infinity, bottom = -Infinity;
     for (let k = 0; k <= 24; k += 1) {
-      const q = passAt(width, height, flight, k / 24, HELI_LENGTH);
-      const length = q.ppm * HELI_LENGTH;
+      const u = k / 24;
+      const q = passAt(width, height, flight, u, flight.aircraft.length);
+      const length = q.ppm * flight.aircraft.length;
       if (q.x + length / 2 < 0 || q.x - length / 2 > width) continue;
-      top = Math.min(top, q.y - 0.2 * length);
+      const lift = u > from - 0.05 && u < to + 0.05 ? rise * q.ppm : 0;
+      top = Math.min(top, q.y - 0.2 * length - lift);
       bottom = Math.max(bottom, q.y + 0.2 * length);
     }
     if (!Number.isFinite(top)) break;
@@ -676,28 +856,59 @@ function clearance(width, height, flight) {
     flight.entrySize *= shrink;
     flight.exitSize *= shrink;
   }
-  flight.clearKey = key;
-  flight.drop = drop;
   return drop;
 }
 
-function flightAt(width, height, flight, u, seconds) {
-  const pass = passAt(width, height, flight, u, HELI_LENGTH);
-  pass.y += clearance(width, height, flight);
+// Hora da manobra e encaixe na faixa, uma vez por voo e tamanho de tela.
+function prepare(width, height, flight) {
+  const key = `${width}x${height}`;
+  if (flight.key === key) return;
+  flight.key = key;
+  schedule(width, height, flight);
+  flight.drop = clearance(width, height, flight);
+}
+
+// A aeronave no instante [seconds] do ciclo.
+function flightAt(width, height, flight, seconds) {
+  const { length, duration, pitch, bank, maxBank, bob } = flight.aircraft;
+  prepare(width, height, flight);
+  const elapsed = seconds - flightStart(flight.aircraft);
+  const u = progress(flight, elapsed);
+  const pass = passAt(width, height, flight, u, length);
+  pass.y += flight.drop;
   // Inclinação lateral da curva coordenada, tan φ = v·ω/g, realçada para
   // aparecer no tamanho da tela.
-  const du = 0.01, other = u + du <= 1 ? u + du : u - du;
-  const next = passAt(width, height, flight, other, HELI_LENGTH);
-  const dt = (other - u) * HELI_DURATION;
-  const omega = (next.heading - pass.heading) / dt;
-  const speed = Math.abs(next.travelled - pass.travelled) / Math.abs(dt);
-  pass.roll = Math.max(-0.26, Math.min(0.26, Math.atan(speed * omega / 9.81) * 4));
-  pass.pitch = -0.06 + Math.sin(seconds * 0.9) * 0.01;
+  const dt = 0.08, other = elapsed + dt <= duration ? elapsed + dt : elapsed - dt;
+  const next = passAt(width, height, flight, progress(flight, other), length);
+  const omega = (next.heading - pass.heading) / (other - elapsed);
+  const speed = Math.abs(next.travelled - pass.travelled) / dt;
+  pass.roll = Math.max(-maxBank, Math.min(maxBank, Math.atan(speed * omega / 9.81) * bank));
+  pass.pitch = pitch + Math.sin(seconds * 0.9) * 0.01;
+  pass.yaw = 0;
   pass.trim = 0;
-  pass.y += Math.sin(seconds * 1.1) * 0.18 * pass.ppm;
+  pass.y += Math.sin(seconds * 1.1) * bob * pass.ppm;
   // Surge e some pelas bordas com mais calma que o submarino, cujo voo é
   // mais longo.
   pass.opacity = Math.max(0, Math.min(1, Math.min(u, 1 - u) / 0.08));
+
+  const { begin, span } = flight.plan;
+  const x = (elapsed - begin) / span;
+  if (x > 0 && x < 1) {
+    const move = MANEUVERS[flight.maneuver.kind].pose(x, flight.maneuver.dir);
+    pass.roll += move.roll || 0;
+    pass.pitch += move.pitch || 0;
+    pass.yaw += move.yaw || 0;
+    const along = move.along || 0, above = move.above || 0, lateral = move.lateral || 0;
+    if (along || above || lateral) {
+      // Sai da derrota: o centro vai para o ponto deslocado e o tamanho
+      // acompanha o quanto ele chegou mais perto da câmera.
+      const [px, py] = pass.point(along, above, lateral);
+      const nearer = pass.depth(along, above, lateral);
+      pass.x = px;
+      pass.y = py;
+      pass.ppm *= pass.zc / Math.max(pass.zc * 0.5, pass.zc - nearer);
+    }
+  }
   return pass;
 }
 
@@ -706,13 +917,124 @@ function flightAt(width, height, flight, u, seconds) {
 const side = x => (x < 0 ? "left" : x > 1 ? "right" : null);
 
 // Sorteia de novo enquanto o rumo entrar pelo lado por onde o anterior saiu:
-// o helicóptero não pode surgir no ponto em que o submarino acabou de sumir,
+// a aeronave não pode surgir no ponto em que o submarino acabou de sumir,
 // como se um tivesse virado o outro. Só vale nessa passagem: aplicada também
-// do helicóptero para o submarino, a regra prendia os dois num sentido só.
+// da aeronave para o submarino, a regra prendia os dois num sentido só.
 function awayFrom(avoid, make) {
   let item = make();
   for (let tries = 0; avoid && side(item.entryX) === avoid && tries < 20; tries += 1) item = make();
   return item;
+}
+
+// ── Escapamento do AF-1 ───────────────────────────────────────────────────
+//
+// O J52 do Skyhawk não tem pós-combustor: do bocal sai um jato quente curto,
+// alaranjado, e o rastro de fumaça clara pelo qual o A-4 era conhecido. O
+// jato vai preso ao avião; o rastro fica no ar onde nasceu, então acompanha a
+// curva da derrota e fica para trás enquanto se desfaz. Os dois ficam atrás
+// do avião, como a esteira fica atrás do casco.
+
+const EXHAUST_STEP = 0.018;
+const EXHAUST_LIFE = 2.4;
+const EXHAUST_HOT = [255, 200, 140];
+const EXHAUST_SMOKE = [196, 208, 220];
+
+// Ponto do corpo da aeronave (eixos do modelo, em metros) na tela, com a
+// atitude que o shader aplica: inclinação lateral, arfagem e guinada, em
+// torno do pivô.
+function bodyPoint(pass, pivot, x, y, z) {
+  const roll = pass.roll || 0, pitch = pass.pitch || 0, yaw = pass.yaw || 0;
+  const px = x - pivot[0], py = y - pivot[1], pz = z - pivot[2];
+  const rolledY = py * Math.cos(roll) - pz * Math.sin(roll);
+  const rolledZ = py * Math.sin(roll) + pz * Math.cos(roll);
+  const pitchedX = px * Math.cos(pitch) - rolledY * Math.sin(pitch);
+  const pitchedY = px * Math.sin(pitch) + rolledY * Math.cos(pitch);
+  return pass.point(pitchedX * Math.cos(yaw) - rolledZ * Math.sin(yaw), pitchedY, pitchedX * Math.sin(yaw) + rolledZ * Math.cos(yaw));
+}
+
+function glow(ctx, x, y, radius, stops) {
+  const gradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  for (const [at, color] of stops) gradient.addColorStop(at, color);
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Cone desfocado do bocal para trás, que se apaga ao longo do comprimento.
+function plume(ctx, ratio, from, to, r0, r1, color, alpha) {
+  const axisX = to[0] - from[0], axisY = to[1] - from[1];
+  const length = Math.hypot(axisX, axisY);
+  if (length < 1 || alpha <= 0) return;
+  const nx = -axisY / length, ny = axisX / length;
+  const gradient = ctx.createLinearGradient(from[0], from[1], to[0], to[1]);
+  gradient.addColorStop(0, `rgba(0,0,0,${alpha})`);
+  gradient.addColorStop(0.45, `rgba(0,0,0,${alpha * 0.35})`);
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+  blurred(ctx, ratio, Math.max(1.5, r0 * 0.7), rgba(color, 1), () => {
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(from[0] + nx * r0, from[1] + ny * r0);
+    ctx.lineTo(to[0] + nx * r1, to[1] + ny * r1);
+    ctx.lineTo(to[0] - nx * r1, to[1] - ny * r1);
+    ctx.lineTo(from[0] - nx * r0, from[1] - ny * r0);
+    ctx.closePath();
+    ctx.fill();
+  });
+}
+
+// [pass] é o avião agora (nulo fora da travessia: o rastro ainda se desfaz
+// depois que ele sai de cena).
+function drawExhaust(ctx, ratio, width, height, flight, pass, seconds) {
+  const { exhaust, duration, model } = flight.aircraft;
+  const start = flightStart(flight.aircraft);
+  const [ex, ey, ez] = exhaust.at;
+  const at = (q, aft, above = 0, lateral = 0) => bodyPoint(q, model.pivot, ex - aft, ey + above, ez + lateral);
+
+  // 1. Rastro. Cada lufada nasce no bocal num instante fixo, recua com o
+  // jato, abre, sobe um pouco e se apaga; o tamanho vem da distância em que
+  // ela nasceu. Onde e como o avião estava ao soltar cada lufada não muda de
+  // um quadro para o outro, então fica guardado no voo.
+  const first = Math.max(0, Math.ceil((seconds - start - EXHAUST_LIFE) / EXHAUST_STEP));
+  const last = Math.min(Math.floor((seconds - start) / EXHAUST_STEP), Math.floor(duration / EXHAUST_STEP));
+  const key = `${width}x${height}`;
+  if (flight.birthKey !== key) {
+    flight.birthKey = key;
+    flight.births = new Map();
+  }
+  for (const k of flight.births.keys()) if (k < first) flight.births.delete(k);
+  for (let k = first; k <= last; k += 1) {
+    const born = start + k * EXHAUST_STEP;
+    const age = seconds - born;
+    let q = flight.births.get(k);
+    if (!q) {
+      q = flightAt(width, height, flight, born);
+      flight.births.set(k, q);
+    }
+    const n1 = noise(k, 1, 83), n2 = noise(k, 2, 89), n3 = noise(k, 3, 97);
+    const drift = 6 * (1 - Math.exp(-age / 0.5));
+    const p = at(q, drift, (n2 - 0.5) * 0.6 * age + 0.15 * age * age, (n1 - 0.5) * 0.6 * age);
+    const radius = (exhaust.radius * (1.1 + 1.6 * age) + 0.25 * age) * (0.8 + 0.4 * n3) * q.ppm;
+    const alpha = q.opacity * 0.2 * Math.min(age / 0.05, 1) * (1 - age / EXHAUST_LIFE) ** 1.6;
+    const heat = Math.min(age / 0.35, 1);
+    const color = EXHAUST_HOT.map((c, i) => Math.round(c + (EXHAUST_SMOKE[i] - c) * heat));
+    glow(ctx, p[0], p[1], Math.max(radius, 0.5), [[0, rgba(color, alpha)], [1, rgba(color, 0)]]);
+  }
+
+  // 2. Jato quente e brilho do bocal, com uma leve cintilação.
+  if (!pass) return;
+  const t = seconds * 18, i = Math.floor(t);
+  const flicker = 0.85 + 0.15 * (noise(i, 9, 71) + (noise(i + 1, 9, 71) - noise(i, 9, 71)) * (t - i));
+  const strength = pass.opacity * flicker;
+  const r = exhaust.radius * pass.ppm;
+  const exit = at(pass, 0);
+  plume(ctx, ratio, exit, at(pass, 4.2 * flicker), r * 1.05, r * 1.7, [255, 132, 60], 0.45 * strength);
+  plume(ctx, ratio, exit, at(pass, 1.8 * flicker), r * 0.6, r * 0.8, [255, 228, 186], 0.7 * strength);
+  glow(ctx, exit[0], exit[1], r * 2.4, [
+    [0, rgba([255, 236, 204], 0.6 * strength)],
+    [0.4, rgba([255, 150, 70], 0.25 * strength)],
+    [1, rgba([255, 120, 50], 0)]
+  ]);
 }
 
 // ── Componente ────────────────────────────────────────────────────────────
@@ -731,7 +1053,7 @@ export default function SubmarineScene({ playing, accent }) {
     const scene = modelRef.current?.parentElement;
     // Onde cada um passa, medido no layout de verdade. O submarino vai fundo,
     // pelo meio do cartão de volume, com o casco entrando por trás do vidro
-    // fosco dele; o helicóptero, entre a capa e o topo da vela do submarino.
+    // fosco dele; a aeronave, entre a capa e o topo da vela do submarino.
     // Com a tela deitada a coluna fica mais larga que alta, e os tamanhos, que
     // são frações da largura, estouravam: nela os dois acompanham a altura.
     const layoutOf = () => {
@@ -746,18 +1068,37 @@ export default function SubmarineScene({ playing, accent }) {
       const volumeTop = at(".volume-control", "top"), volumeBottom = at(".volume-control", "bottom");
       const art = hero.querySelector(".cover-progress") ? ".cover-progress" : ".cover-wrap";
       const coverTop = at(art, "top"), coverBottom = at(art, "bottom");
-      const sub = volumeTop == null ? 0.62 : Math.max(0.45, Math.min(0.8, volumeTop + 0.6 * (volumeBottom - volumeTop)));
+      const artBox = hero.querySelector(art)?.getBoundingClientRect();
+      const coverBox = artBox && {
+        left: (artBox.left - box.left) / box.width,
+        right: (artBox.right - box.left) / box.width,
+        top: coverTop,
+        bottom: coverBottom
+      };
+      const sub =volumeTop == null ? 0.62 : Math.max(0.45, Math.min(0.8, volumeTop + 0.6 * (volumeBottom - volumeTop)));
       const cover = coverBottom == null ? 0.2 : Math.max(0.08, Math.min(0.6, (coverTop + coverBottom) / 2));
       // Até onde a vela do submarino sobe acima da linha dele: cresce com o
       // tamanho do casco na tela, e os rumos que vêm de longe passam mais
       // altos. Calibrado simulando milhares de travessias.
       const sail = 0.03 + 0.14 * scale * aspect;
-      return { sub, cover, ceiling: 4 / box.height, floor: sub - sail - 0.02, aspect, scale };
+      return { sub, cover, box: coverBox, ceiling: 4 / box.height, floor: sub - sail - 0.02, aspect, scale };
     };
     const newCourse = () => { const l = layoutOf(); return l ? randomCourse(l.sub, l.scale) : randomCourse(0.62); };
-    const newFlight = () => randomFlight(layoutOf() || undefined);
+    // As aeronaves se revezam a cada ciclo, começando pelo UH-17, e nenhuma
+    // repete a manobra da passagem anterior.
+    let flights = 0;
+    const lastManeuver = new Map();
+    const newFlight = () => {
+      const aircraft = AIRCRAFT[flights % AIRCRAFT.length];
+      return randomFlight(aircraft, layoutOf() || undefined, lastManeuver.get(aircraft));
+    };
+    const takeOff = () => {
+      const next = awayFrom(side(course.exitX), newFlight);
+      lastManeuver.set(next.aircraft, next.maneuver.kind);
+      return next;
+    };
     let course = newCourse();
-    let flight = awayFrom(side(course.exitX), newFlight);
+    let flight = takeOff();
     const startCycle = 0.35 * CROSSING_FRACTION;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const cycles = () => sceneTime / CYCLE + startCycle;
@@ -774,11 +1115,12 @@ export default function SubmarineScene({ playing, accent }) {
         const after = easeInOut(throttle);
         const cycleBefore = Math.floor(cycles());
         sceneTime += dt * (before + after) / 2;
-        // Virada do ciclo: sub e helicóptero já saíram de cena, hora de
+        // Virada do ciclo: sub e aeronave já saíram de cena, hora de
         // sortear os próximos rumos.
         if (Math.floor(cycles()) !== cycleBefore) {
           course = newCourse();
-          flight = awayFrom(side(course.exitX), newFlight);
+          flights += 1;
+          flight = takeOff();
         }
       }
 
@@ -786,7 +1128,8 @@ export default function SubmarineScene({ playing, accent }) {
       const width = rect.width, height = rect.height;
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const accentColor = accentRef.current;
-      const loaded = `${renderer.has(SUBMARINE_MODEL)}${renderer.has(HELICOPTER_MODEL)}`;
+      const { aircraft } = flight;
+      const loaded = `${renderer.has(SUBMARINE_MODEL)}${renderer.has(aircraft.model)}`;
       const key = `${sceneTime}|${width}|${height}|${ratio}|${accentColor}|${loaded}`;
       if (width && height && key !== lastKey) {
         lastKey = key;
@@ -795,16 +1138,24 @@ export default function SubmarineScene({ playing, accent }) {
         const cycleSeconds = cycle * CYCLE;
         const t = cycle / CROSSING_FRACTION;
         const submarine = t > 1 || !renderer.has(SUBMARINE_MODEL) ? null : passAt(width, height, course, t);
-        const u = (cycleSeconds - HELI_START) / HELI_DURATION;
-        const helicopter = u < 0 || u > 1 || !renderer.has(HELICOPTER_MODEL)
+        const elapsed = cycleSeconds - flightStart(aircraft);
+        const overhead = elapsed < 0 || elapsed > aircraft.duration || !renderer.has(aircraft.model)
           ? null
-          : flightAt(width, height, flight, u, cycleSeconds);
+          : flightAt(width, height, flight, cycleSeconds);
         renderer.draw([
           { model: SUBMARINE_MODEL, pass: submarine, angle: cycleSeconds * PROPELLER_REVS * 2 * Math.PI },
-          { model: HELICOPTER_MODEL, pass: helicopter, angle: cycleSeconds * ROTOR_REVS * 2 * Math.PI }
+          { model: aircraft.model, pass: overhead, angle: cycleSeconds * aircraft.revs * 2 * Math.PI }
         ], width, height, ratio);
-        drawBackdrop(wakeRef.current, submarine, cycleSeconds, width, height, ratio, accentColor);
-        const visible = Math.max(submarine ? submarine.opacity : 0, helicopter ? helicopter.opacity : 0);
+        drawBackdrop(wakeRef.current, width, height, ratio, ctx => {
+          if (submarine) {
+            drawShadow(ctx, ratio, submarine);
+            drawWake(ctx, ratio, width, submarine, cycleSeconds, accentColor);
+          }
+          if (aircraft.exhaust && renderer.has(aircraft.model)) {
+            drawExhaust(ctx, ratio, width, height, flight, overhead, cycleSeconds);
+          }
+        });
+        const visible = Math.max(submarine ? submarine.opacity : 0, overhead ? overhead.opacity : 0);
         modelRef.current.style.opacity = String(BACKDROP_OPACITY * visible);
       }
       frame = requestAnimationFrame(tick);
@@ -822,8 +1173,12 @@ export default function SubmarineScene({ playing, accent }) {
       .then(response => { if (!response.ok) throw new Error(`Modelo do ${label} indisponível`); return response.json(); })
       .then(data => { if (!disposed) renderer.add(model, data); })
       .catch(error => console.error(`Não foi possível desenhar o ${label}:`, error));
-    // O submarino entra primeiro; o helicóptero só aparece depois dele.
-    load(SUBMARINE_MODEL, "submarino").then(() => { if (!disposed) load(HELICOPTER_MODEL, "helicóptero"); });
+    // O submarino entra primeiro; as aeronaves só depois dele, uma de cada vez,
+    // na ordem em que voam.
+    AIRCRAFT.reduce(
+      (chain, item) => chain.then(() => (disposed ? undefined : load(item.model, item.label))),
+      load(SUBMARINE_MODEL, "submarino")
+    );
 
     return () => { disposed = true; cancelAnimationFrame(frame); renderer.dispose(); };
   }, []);
