@@ -119,8 +119,24 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--ocean-400);
     0 24px 72px rgba(0, 0, 0, 0.35),
     0 0 0 1px rgba(30, 107, 138, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
-  backdrop-filter: blur(12px) saturate(1.2);
+}
+/* Vidro fosco do painel sem backdrop-filter: o Firefox no Linux sem
+   aceleração de vídeo (e em algumas GPUs) não desenha backdrop-filter, e o
+   painel ficava transparente sobre a foto nítida. Aqui o painel pinta o
+   próprio fundo com uma cópia já desfocada da foto (blur 12px, saturação
+   1.2), presa à janela como a do .ambient para as duas coincidirem. */
+.shell::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(145deg, rgba(21, 42, 71, 0.28), rgba(11, 20, 38, 0.32)),
+    linear-gradient(180deg, rgba(11, 20, 38, 0.25) 0%, rgba(15, 29, 53, 0.40) 50%, rgba(11, 20, 38, 0.55) 100%),
+    url("/imagens/fundo_da_radio2-desfocado.jpg") center / cover no-repeat;
+  background-attachment: scroll, fixed, fixed;
 }
 
 /* ── Topbar ──────────────────────────────────────────────── */
@@ -2338,6 +2354,10 @@ footer {
     -webkit-backdrop-filter: blur(6px) saturate(1.0);
     backdrop-filter: blur(6px) saturate(1.0);
   }
+  /* No celular a página rola inteira e o fundo fixo não acompanharia no iOS:
+     aqui o vidro continua sendo o backdrop-filter, que os navegadores de
+     celular desenham bem. */
+  .shell::before { display: none; }
   .topbar {
     position: relative;
     z-index: 5;
