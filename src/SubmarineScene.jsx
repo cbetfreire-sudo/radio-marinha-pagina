@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 
 // Port do cenário do app (marinha_app/lib/components/radio_submarine):
-// mesma malha do Riachuelo (variante S41, Humaitá), mesma câmera, mesmos
+// mesma malha do Riachuelo (variante S43, Almirante Karam), mesma câmera, mesmos
 // rumos e a mesma esteira da hélice. No intervalo entre duas travessias, o
 // UH-17 do SuperCard Naval sobrevoa o alto da tela.
 
@@ -83,11 +83,15 @@ void main() {
   vec3 nn = normalize(n);
   float diffuse = max(0.0, dot(nn, vec3(-0.32, 0.83, 0.46)));
   vec3 shaded = aColor * (0.50 + diffuse * 0.50);
-  // Luz do ambiente: a água (ou o céu) tinge o modelo, acende o que está
-  // voltado para cima e marca o contorno, sem apagar as cores da malha.
+  // Luz do ambiente: a claridade da água (ou do céu) desce da superfície.
+  // Ela tinge o que está voltado para cima, acende o dorso e marca só o
+  // contorno de cima; a barriga, virada para o fundo, fica na sombra, sem
+  // tom nem contorno, e um pouco mais escura que os costados.
+  float up = clamp(nn.y * 0.5 + 0.5, 0.0, 1.0);
   float sky = max(0.0, nn.y);
-  float rim = pow(1.0 - clamp(abs(dot(nn, view)), 0.0, 1.0), 2.5);
-  vColor = min(shaded * uExposure + uTint * (uTintAmount.x + uTintAmount.y * sky + uTintAmount.z * rim), 1.0);
+  float rim = pow(1.0 - clamp(abs(dot(nn, view)), 0.0, 1.0), 2.5) * smoothstep(0.0, 0.6, nn.y);
+  vec3 lit = shaded * uExposure * mix(0.7, 1.0, up);
+  vColor = min(lit + uTint * (uTintAmount.x * up + uTintAmount.y * sky + uTintAmount.z * rim), 1.0);
 
   float horizontal = p.x * ca - p.z * sa;
   float vertical = p.x * sa * se - p.y * ce + p.z * ca * se;
@@ -118,7 +122,7 @@ const AXIS = { x: 1, y: 2, z: 3 };
 // recorte preto: o submarino recebe a claridade azul que desce da superfície.
 const SUBMARINE_MODEL = {
   url: "/imagens/riachuelo.mesh.json",
-  variant: "S41",
+  variant: "S43",
   pivot: [0, 0, 0],
   spinners: [{ test: /propeller|helice/i, axis: "x", center: [0, PROPELLER_CENTER_Y, 0], speed: 1 }],
   exposure: 1.6,
@@ -611,49 +615,49 @@ const ROTOR_REVS = 2.3;
 // menor; a distância e a perspectiva saem daí.
 const HELI_SCALE = 1.6;
 
-// [lane] vem de layoutOf: a borda de baixo da capa do álbum, que é opaca e
-// esconderia o helicóptero (cover), o piso da faixa dele, acima do topo do
-// submarino (floor), ambos em fração da altura, a proporção da tela e a escala.
-// O voo passa logo abaixo da capa, com folga para o rotor por cima da
-// fuselagem, e nunca desce até a faixa do submarino.
-function randomFlight(lane = { cover: 0.2, floor: 0.5, aspect: 0.6, scale: 1 }) {
+// [lane] vem de layoutOf: o centro da capa do álbum, na altura do qual o
+// helicóptero voa, passando por trás dela como por trás de um prédio (cover);
+// o teto, para o rotor não ser cortado no alto da coluna (ceiling), e o piso,
+// acima do topo da vela do submarino (floor), todos em fração da altura; a
+// proporção da tela e a escala.
+function randomFlight(lane = { cover: 0.2, ceiling: 0.01, floor: 0.5, aspect: 0.6, scale: 1 }) {
   const jitter = span => (Math.random() * 2 - 1) * span;
   const size = HELI_SCALE * lane.scale * (1 + jitter(0.12));
-  const height = jitter(0.015);
-  const below = biggest => Math.min(0.75, lane.cover + 0.15 * biggest * lane.aspect + height);
+  const below = () => lane.cover + jitter(0.015);
   const offLeft = s => -s / 2 - 0.04;
   const offRight = s => 1 + s / 2 + 0.04;
-  const course = { dive: jitter(0.02), turnStart: 0, turnEnd: 1, clearY: lane.cover, floorY: lane.floor };
+  const course = { dive: jitter(0.02), turnStart: 0, turnEnd: 1, ceilY: lane.ceiling, floorY: lane.floor };
   // Sempre entra e sai pelas bordas, já grande: nascendo ao longe no meio da
-  // tela, pequeno atrás da capa e do título, ele passava despercebido.
+  // tela, pequeno e escondido atrás da capa, ele passava despercebido.
   const entry = 0.26 * size, exit = 0.34 * size;
   const nearEntry = 0.22 * size, nearExit = 0.42 * size;
   switch (Math.floor(Math.random() * 4)) {
     // Través, da esquerda para a direita, aproximando-se aos poucos.
     case 0:
-      return { ...course, entryX: offLeft(entry), exitX: offRight(exit), entrySize: entry, exitSize: exit, sightY: below(exit), elevation: -0.05 + jitter(0.02), turn: -0.20 + jitter(0.08) };
+      return { ...course, entryX: offLeft(entry), exitX: offRight(exit), entrySize: entry, exitSize: exit, sightY: below(), elevation: -0.05 + jitter(0.02), turn: -0.20 + jitter(0.08) };
     // O espelho: da direita para a esquerda.
     case 1:
-      return { ...course, entryX: offRight(entry), exitX: offLeft(exit), entrySize: entry, exitSize: exit, sightY: below(exit), elevation: -0.05 + jitter(0.02), turn: 0.20 + jitter(0.08) };
+      return { ...course, entryX: offRight(entry), exitX: offLeft(exit), entrySize: entry, exitSize: exit, sightY: below(), elevation: -0.05 + jitter(0.02), turn: 0.20 + jitter(0.08) };
     // Entra mais longe pela esquerda e guina na direção da câmera, passando
     // perto antes de sair pela direita.
     case 2:
-      return { ...course, entryX: offLeft(nearEntry), exitX: offRight(nearExit), entrySize: nearEntry, exitSize: nearExit, sightY: below(nearExit), elevation: -0.04 + jitter(0.01), turn: -0.60 + jitter(0.10), turnStart: 0.20, turnEnd: 0.75 };
+      return { ...course, entryX: offLeft(nearEntry), exitX: offRight(nearExit), entrySize: nearEntry, exitSize: nearExit, sightY: below(), elevation: -0.04 + jitter(0.01), turn: -0.60 + jitter(0.10), turnStart: 0.20, turnEnd: 0.75 };
     // O espelho: pela direita, saindo pela esquerda.
     default:
-      return { ...course, entryX: offRight(nearEntry), exitX: offLeft(nearExit), entrySize: nearEntry, exitSize: nearExit, sightY: below(nearExit), elevation: -0.04 + jitter(0.01), turn: 0.60 + jitter(0.10), turnStart: 0.20, turnEnd: 0.75 };
+      return { ...course, entryX: offRight(nearEntry), exitX: offLeft(nearExit), entrySize: nearEntry, exitSize: nearExit, sightY: below(), elevation: -0.04 + jitter(0.01), turn: 0.60 + jitter(0.10), turnStart: 0.20, turnEnd: 0.75 };
   }
 }
 
-// Encaixa o voo na faixa dele. Baixa a derrota o bastante para a fuselagem
-// nunca entrar atrás da capa (só as pontas finas do rotor podem roçar a borda)
-// e, se mesmo assim os esquis descerem até a faixa do submarino, encolhe o
-// helicóptero — ou seja, afasta-o da câmera — até caber. Perto da câmera ele
-// sobe na tela, então é o trajeto visível inteiro que decide. Calculado uma vez
-// por voo e tamanho de tela.
+// Encaixa o voo na faixa dele: se os esquis descerem até a faixa do
+// submarino, sobe a derrota; se o rotor passar do alto da coluna, desce; e, se
+// não couber nas duas coisas, encolhe o helicóptero — ou seja, afasta-o da
+// câmera. Perto da câmera ele sobe na tela, então é o trajeto visível inteiro
+// que decide. Calculado uma vez por voo e tamanho de tela.
 function clearance(width, height, flight) {
   const key = `${width}x${height}`;
   if (flight.clearKey === key) return flight.drop;
+  const ceiling = (flight.ceilY ?? 0) * height;
+  const floor = (flight.floorY ?? 1) * height;
   let drop = 0;
   for (let attempt = 0; attempt < 6; attempt += 1) {
     let top = Infinity, bottom = -Infinity;
@@ -661,14 +665,14 @@ function clearance(width, height, flight) {
       const q = passAt(width, height, flight, k / 24, HELI_LENGTH);
       const length = q.ppm * HELI_LENGTH;
       if (q.x + length / 2 < 0 || q.x - length / 2 > width) continue;
-      top = Math.min(top, q.y - 0.15 * length);
+      top = Math.min(top, q.y - 0.2 * length);
       bottom = Math.max(bottom, q.y + 0.2 * length);
     }
     if (!Number.isFinite(top)) break;
-    drop = Math.max(0, flight.clearY * height - top);
-    const room = (flight.floorY - flight.clearY) * height;
-    if (flight.floorY == null || bottom + drop <= flight.floorY * height || room <= 0) break;
-    const shrink = Math.max(0.5, Math.min(0.97, room / (bottom - top)));
+    drop = Math.min(0, floor - bottom);
+    if (top + drop < ceiling) drop = ceiling - top;
+    if (bottom + drop <= floor + 0.5 || floor <= ceiling) break;
+    const shrink = Math.max(0.5, Math.min(0.97, (floor - ceiling) / (bottom - top)));
     flight.entrySize *= shrink;
     flight.exitSize *= shrink;
   }
@@ -740,14 +744,15 @@ export default function SubmarineScene({ playing, accent }) {
         return node ? (node.getBoundingClientRect()[edge] - box.top) / box.height : null;
       };
       const volumeTop = at(".volume-control", "top"), volumeBottom = at(".volume-control", "bottom");
-      const coverBottom = at(".cover-wrap", "bottom");
+      const art = hero.querySelector(".cover-progress") ? ".cover-progress" : ".cover-wrap";
+      const coverTop = at(art, "top"), coverBottom = at(art, "bottom");
       const sub = volumeTop == null ? 0.62 : Math.max(0.45, Math.min(0.8, volumeTop + 0.6 * (volumeBottom - volumeTop)));
-      const cover = coverBottom == null ? 0.2 : Math.max(0.1, Math.min(0.6, coverBottom + 2 / box.height));
+      const cover = coverBottom == null ? 0.2 : Math.max(0.08, Math.min(0.6, (coverTop + coverBottom) / 2));
       // Até onde a vela do submarino sobe acima da linha dele: cresce com o
       // tamanho do casco na tela, e os rumos que vêm de longe passam mais
       // altos. Calibrado simulando milhares de travessias.
       const sail = 0.03 + 0.14 * scale * aspect;
-      return { sub, cover, floor: sub - sail - 0.02, aspect, scale };
+      return { sub, cover, ceiling: 4 / box.height, floor: sub - sail - 0.02, aspect, scale };
     };
     const newCourse = () => { const l = layoutOf(); return l ? randomCourse(l.sub, l.scale) : randomCourse(0.62); };
     const newFlight = () => randomFlight(layoutOf() || undefined);
