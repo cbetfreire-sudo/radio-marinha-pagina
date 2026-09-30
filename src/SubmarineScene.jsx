@@ -274,10 +274,14 @@ function resize(canvas, width, height, ratio) {
 
 const SIZE_SCALE = 2.0;
 
-function randomCourse() {
+// [lane] é a altura da travessia em fração da tela. No app os rumos passam
+// em torno de 0,42; aqui o sub vai mais fundo, logo acima do cartão de volume,
+// e cada rumo mantém a mesma diferença de altura que tinha em relação aos outros.
+// [scale] encolhe o casco quando a tela é mais larga que alta (veja layoutOf).
+function randomCourse(lane = 0.42, scale = 1) {
   const mode = Math.floor(Math.random() * 5);
   const jitter = span => (Math.random() * 2 - 1) * span;
-  const size = SIZE_SCALE * (1 + jitter(0.10));
+  const size = SIZE_SCALE * scale * (1 + jitter(0.10));
   const height = jitter(0.035);
   const edge = (x, base) => {
     const extra = (SIZE_SCALE - 1) / SIZE_SCALE * base * size / 2;
@@ -286,15 +290,15 @@ function randomCourse() {
   const course = { dive: 0, turnStart: 0, turnEnd: 1 };
   switch (mode) {
     case 0:
-      return { ...course, entryX: edge(-0.34, 0.36), exitX: edge(1.40, 0.62), entrySize: 0.36 * size, exitSize: 0.62 * size, sightY: 0.42 + height, elevation: 0.15 + jitter(0.02), turn: -0.26 + jitter(0.06) };
+      return { ...course, entryX: edge(-0.34, 0.36), exitX: edge(1.40, 0.62), entrySize: 0.36 * size, exitSize: 0.62 * size, sightY: lane + height, elevation: 0.15 + jitter(0.02), turn: -0.26 + jitter(0.06) };
     case 1:
-      return { ...course, entryX: edge(1.34, 0.36), exitX: edge(-0.40, 0.62), entrySize: 0.36 * size, exitSize: 0.62 * size, sightY: 0.42 + height, elevation: 0.15 + jitter(0.02), turn: 0.26 + jitter(0.06) };
+      return { ...course, entryX: edge(1.34, 0.36), exitX: edge(-0.40, 0.62), entrySize: 0.36 * size, exitSize: 0.62 * size, sightY: lane + height, elevation: 0.15 + jitter(0.02), turn: 0.26 + jitter(0.06) };
     case 2:
-      return { ...course, entryX: 0.24 + jitter(0.06), exitX: edge(1.46, 0.60), entrySize: 0.30 * size, exitSize: 0.60 * size, sightY: 0.40 + height, elevation: 0.11 + jitter(0.02), turn: -0.78 + jitter(0.10) };
+      return { ...course, entryX: 0.24 + jitter(0.06), exitX: edge(1.46, 0.60), entrySize: 0.30 * size, exitSize: 0.60 * size, sightY: lane - 0.02 + height, elevation: 0.11 + jitter(0.02), turn: -0.78 + jitter(0.10) };
     case 4:
-      return { ...course, entryX: 0.44 + jitter(0.02), exitX: edge(1.45, 0.75), entrySize: 0.24 * size, exitSize: 0.75 * size, sightY: 0.40 + height, elevation: 0.11 + jitter(0.02), turn: -1.55 + jitter(0.05), turnStart: 0.35, turnEnd: 0.78 };
+      return { ...course, entryX: 0.44 + jitter(0.02), exitX: edge(1.45, 0.75), entrySize: 0.24 * size, exitSize: 0.75 * size, sightY: lane - 0.02 + height, elevation: 0.11 + jitter(0.02), turn: -1.55 + jitter(0.05), turnStart: 0.35, turnEnd: 0.78 };
     default:
-      return { ...course, entryX: edge(-0.32, 0.38), exitX: edge(1.38, 0.56), entrySize: 0.38 * size, exitSize: 0.56 * size, sightY: 0.35 + height, elevation: 0.09 + jitter(0.02), turn: -0.16 + jitter(0.06), dive: 0.042 + jitter(0.012) };
+      return { ...course, entryX: edge(-0.32, 0.38), exitX: edge(1.38, 0.56), entrySize: 0.38 * size, exitSize: 0.56 * size, sightY: lane - 0.07 + height, elevation: 0.09 + jitter(0.02), turn: -0.16 + jitter(0.06), dive: 0.042 + jitter(0.012) };
   }
 }
 
@@ -607,17 +611,19 @@ const ROTOR_REVS = 2.3;
 // menor; a distância e a perspectiva saem daí.
 const HELI_SCALE = 1.6;
 
-// [lane] diz onde fica a borda de baixo da capa do álbum, que é opaca e
-// esconderia o helicóptero (em fração da altura), e a proporção da tela. O voo
-// passa logo abaixo dela, com folga para o rotor por cima da fuselagem.
-function randomFlight(lane = { y: 0.2, aspect: 0.6 }) {
+// [lane] vem de layoutOf: a borda de baixo da capa do álbum, que é opaca e
+// esconderia o helicóptero (cover), o piso da faixa dele, acima do topo do
+// submarino (floor), ambos em fração da altura, a proporção da tela e a escala.
+// O voo passa logo abaixo da capa, com folga para o rotor por cima da
+// fuselagem, e nunca desce até a faixa do submarino.
+function randomFlight(lane = { cover: 0.2, floor: 0.5, aspect: 0.6, scale: 1 }) {
   const jitter = span => (Math.random() * 2 - 1) * span;
-  const size = HELI_SCALE * (1 + jitter(0.12));
+  const size = HELI_SCALE * lane.scale * (1 + jitter(0.12));
   const height = jitter(0.015);
-  const below = biggest => Math.min(0.75, lane.y + 0.2 * biggest * lane.aspect + height);
+  const below = biggest => Math.min(0.75, lane.cover + 0.15 * biggest * lane.aspect + height);
   const offLeft = s => -s / 2 - 0.04;
   const offRight = s => 1 + s / 2 + 0.04;
-  const course = { dive: jitter(0.02), turnStart: 0, turnEnd: 1, clearY: lane.y };
+  const course = { dive: jitter(0.02), turnStart: 0, turnEnd: 1, clearY: lane.cover, floorY: lane.floor };
   // Sempre entra e sai pelas bordas, já grande: nascendo ao longe no meio da
   // tela, pequeno atrás da capa e do título, ele passava despercebido.
   const entry = 0.26 * size, exit = 0.34 * size;
@@ -639,23 +645,36 @@ function randomFlight(lane = { y: 0.2, aspect: 0.6 }) {
   }
 }
 
-// Quanto baixar a derrota para o rotor nunca entrar atrás da capa: perto da
-// câmera o helicóptero sobe na tela, então o ponto mais alto do trajeto visível
-// é que decide. Calculado uma vez por voo e tamanho de tela.
+// Encaixa o voo na faixa dele. Baixa a derrota o bastante para a fuselagem
+// nunca entrar atrás da capa (só as pontas finas do rotor podem roçar a borda)
+// e, se mesmo assim os esquis descerem até a faixa do submarino, encolhe o
+// helicóptero — ou seja, afasta-o da câmera — até caber. Perto da câmera ele
+// sobe na tela, então é o trajeto visível inteiro que decide. Calculado uma vez
+// por voo e tamanho de tela.
 function clearance(width, height, flight) {
   const key = `${width}x${height}`;
-  if (flight.clearKey !== key) {
-    let top = Infinity;
+  if (flight.clearKey === key) return flight.drop;
+  let drop = 0;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    let top = Infinity, bottom = -Infinity;
     for (let k = 0; k <= 24; k += 1) {
       const q = passAt(width, height, flight, k / 24, HELI_LENGTH);
-      const half = q.ppm * HELI_LENGTH / 2;
-      if (q.x + half < 0 || q.x - half > width) continue;
-      top = Math.min(top, q.y - 0.22 * q.ppm * HELI_LENGTH);
+      const length = q.ppm * HELI_LENGTH;
+      if (q.x + length / 2 < 0 || q.x - length / 2 > width) continue;
+      top = Math.min(top, q.y - 0.15 * length);
+      bottom = Math.max(bottom, q.y + 0.2 * length);
     }
-    flight.clearKey = key;
-    flight.drop = Number.isFinite(top) ? Math.max(0, flight.clearY * height - top) : 0;
+    if (!Number.isFinite(top)) break;
+    drop = Math.max(0, flight.clearY * height - top);
+    const room = (flight.floorY - flight.clearY) * height;
+    if (flight.floorY == null || bottom + drop <= flight.floorY * height || room <= 0) break;
+    const shrink = Math.max(0.5, Math.min(0.97, room / (bottom - top)));
+    flight.entrySize *= shrink;
+    flight.exitSize *= shrink;
   }
-  return flight.drop;
+  flight.clearKey = key;
+  flight.drop = drop;
+  return drop;
 }
 
 function flightAt(width, height, flight, u, seconds) {
@@ -706,15 +725,34 @@ export default function SubmarineScene({ playing, accent }) {
     let disposed = false, frame = 0, renderer = null;
     let sceneTime = 0, throttle = 0, lastTime = 0, lastKey = "";
     const scene = modelRef.current?.parentElement;
-    const lane = () => {
-      const hero = scene.parentElement, cover = hero?.querySelector(".cover-wrap");
-      const box = hero?.getBoundingClientRect();
-      if (!cover || !box.height) return undefined;
-      const art = cover.getBoundingClientRect();
-      return { y: Math.max(0.1, Math.min(0.6, (art.bottom - box.top + 8) / box.height)), aspect: box.width / box.height };
+    // Onde cada um passa, medido no layout de verdade. O submarino vai fundo,
+    // pelo meio do cartão de volume, com o casco entrando por trás do vidro
+    // fosco dele; o helicóptero, entre a capa e o topo da vela do submarino.
+    // Com a tela deitada a coluna fica mais larga que alta, e os tamanhos, que
+    // são frações da largura, estouravam: nela os dois acompanham a altura.
+    const layoutOf = () => {
+      const hero = scene.parentElement, box = hero?.getBoundingClientRect();
+      if (!box?.height) return null;
+      const aspect = box.width / box.height;
+      const scale = Math.min(1, 0.7 / aspect);
+      const at = (selector, edge) => {
+        const node = hero.querySelector(selector);
+        return node ? (node.getBoundingClientRect()[edge] - box.top) / box.height : null;
+      };
+      const volumeTop = at(".volume-control", "top"), volumeBottom = at(".volume-control", "bottom");
+      const coverBottom = at(".cover-wrap", "bottom");
+      const sub = volumeTop == null ? 0.62 : Math.max(0.45, Math.min(0.8, volumeTop + 0.6 * (volumeBottom - volumeTop)));
+      const cover = coverBottom == null ? 0.2 : Math.max(0.1, Math.min(0.6, coverBottom + 2 / box.height));
+      // Até onde a vela do submarino sobe acima da linha dele: cresce com o
+      // tamanho do casco na tela, e os rumos que vêm de longe passam mais
+      // altos. Calibrado simulando milhares de travessias.
+      const sail = 0.03 + 0.14 * scale * aspect;
+      return { sub, cover, floor: sub - sail - 0.02, aspect, scale };
     };
-    let course = randomCourse();
-    let flight = awayFrom(side(course.exitX), () => randomFlight(lane()));
+    const newCourse = () => { const l = layoutOf(); return l ? randomCourse(l.sub, l.scale) : randomCourse(0.62); };
+    const newFlight = () => randomFlight(layoutOf() || undefined);
+    let course = newCourse();
+    let flight = awayFrom(side(course.exitX), newFlight);
     const startCycle = 0.35 * CROSSING_FRACTION;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const cycles = () => sceneTime / CYCLE + startCycle;
@@ -734,8 +772,8 @@ export default function SubmarineScene({ playing, accent }) {
         // Virada do ciclo: sub e helicóptero já saíram de cena, hora de
         // sortear os próximos rumos.
         if (Math.floor(cycles()) !== cycleBefore) {
-          course = randomCourse();
-          flight = awayFrom(side(course.exitX), () => randomFlight(lane()));
+          course = newCourse();
+          flight = awayFrom(side(course.exitX), newFlight);
         }
       }
 
