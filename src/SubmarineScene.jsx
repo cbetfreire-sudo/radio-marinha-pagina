@@ -2,9 +2,9 @@ import React, { useEffect, useRef } from "react";
 
 // Port do cenário do app (marinha_app/lib/components/radio_submarine):
 // mesma malha do Riachuelo (variante S43, Almirante Karam), mesma câmera, mesmos
-// rumos e a mesma esteira da hélice. No intervalo entre duas travessias, uma
-// aeronave do SuperCard Naval sobrevoa o alto da tela: o UH-17 e o AF-1
-// Skyhawk se revezam.
+// rumos e a mesma esteira da hélice. As aeronaves do SuperCard Naval sobrevoam
+// o alto da tela: o AF-1 Skyhawk, depois o UH-17, depois o submarino cruza, um
+// de cada vez, e a sequência recomeça.
 
 const HULL_LENGTH = 71.62;
 const HULL_BEAM = 6.2;
@@ -14,13 +14,10 @@ const PROPELLER_Y = -1.5;
 const PROPELLER_RADIUS = 2.2;
 const PROPELLER_REVS = 1.75;
 const PROPELLER_CENTER_Y = -1.55;
-// Ciclo da cena: o submarino cruza, o mar fica vazio um pouco, a aeronave
-// sobrevoa, o mar descansa de novo e o ciclo recomeça.
+// Duração da travessia do submarino e do mar vazio depois de cada um que
+// passa (veja SEQUENCE).
 const CROSSING = 34;
 const PAUSE = 5;
-const FLIGHT = 15;
-const CYCLE = CROSSING + PAUSE + FLIGHT + PAUSE;
-const CROSSING_FRACTION = CROSSING / CYCLE;
 const RAMP_SECONDS = 1.8;
 const BACKDROP_OPACITY = 0.85;
 const DEFAULT_ACCENT = [0, 229, 255];
@@ -617,13 +614,11 @@ function easeInOut(x) {
 
 // ── Sobrevoo do UH-17 e do Skyhawk ────────────────────────────────────────
 //
-// Entre duas travessias do submarino, uma aeronave cruza a tela, uma de cada
-// vez, e faz uma manobra no caminho. A derrota usa a mesma física da
-// travessia do submarino (velocidade constante sobre um arco, câmera de furo
-// de agulha), só que acima da câmera: vê-se a aeronave um pouco de baixo,
-// inclinando nas curvas.
-
-const FLIGHT_START = CROSSING + PAUSE;
+// Antes de cada travessia do submarino, o Skyhawk e depois o UH-17 cruzam a
+// tela, um de cada vez, e cada um faz uma manobra no caminho. A derrota usa a
+// mesma física da travessia do submarino (velocidade constante sobre um arco,
+// câmera de furo de agulha), só que acima da câmera: vê-se a aeronave um
+// pouco de baixo, inclinando nas curvas.
 
 // Sobe e desce devagar nas pontas: derivada nula em 0 e em 1.
 const ease = x => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
@@ -707,28 +702,32 @@ const MANEUVERS = {
   }
 };
 
-// [length] é o comprimento em metros. [duration] é o tempo da travessia; quem
-// cruza mais depressa que a janela FLIGHT passa no meio dela. [scale] é o
-// tamanho na tela, o único ajuste para deixá-la maior ou menor; a distância e
-// a perspectiva saem daí. [revs] são as rotações do rotor por segundo;
-// [pitch], a arfagem de cruzeiro (o helicóptero vai de nariz baixo, o jato com
-// o nariz um pouco acima); [bank] realça a inclinação da curva, até
-// [maxBank]; [bob] é o balanço vertical, em metros. [maneuvers] é o repertório
-// de onde sai a manobra de cada passagem. [exhaust], quando há, é a saída do
-// bocal do motor: o centro e o raio interno, em metros, do generate_af1.mjs.
-const AIRCRAFT = [
-  {
-    model: HELICOPTER_MODEL, label: "helicóptero", length: 11.7, duration: FLIGHT, scale: 1.6, revs: 2.3, pitch: -0.06, bank: 4, maxBank: 0.26, bob: 0.18,
-    maneuvers: ["pirouette", "hoverPirouette", "bow", "sway"]
-  },
-  {
-    model: SKYHAWK_MODEL, label: "Skyhawk", length: 12.59, duration: 9, scale: 1.6, revs: 0, pitch: 0.03, bank: 12, maxBank: 0.6, bob: 0.05,
-    maneuvers: ["roll", "doubleRoll", "barrelRoll", "loop", "wingRock"],
-    exhaust: { at: [-6.29, 2.04, 0], radius: 0.32 }
-  }
-];
+// [length] é o comprimento em metros. [duration] é o tempo da travessia, da
+// entrada à saída de cena. [scale] é o tamanho na tela, o único ajuste para
+// deixá-la maior ou menor; a distância e a perspectiva saem daí. [revs] são
+// as rotações do rotor (ou da hélice) por segundo; [pitch], a arfagem de
+// cruzeiro (o helicóptero vai de nariz baixo, o jato com o nariz um pouco
+// acima); [bank] realça a inclinação da curva, até [maxBank]; [bob] é o
+// balanço vertical, em metros. [maneuvers] é o repertório de onde sai a
+// manobra de cada passagem. [exhaust], quando há, é a saída do bocal do
+// motor: o centro e o raio interno, em metros, do generate_af1.mjs.
+const HELICOPTER = {
+  model: HELICOPTER_MODEL, label: "helicóptero", length: 11.7, duration: 15, scale: 1.6, revs: 2.3, pitch: -0.06, bank: 4, maxBank: 0.26, bob: 0.18,
+  maneuvers: ["pirouette", "hoverPirouette", "bow", "sway"]
+};
+const SKYHAWK = {
+  model: SKYHAWK_MODEL, label: "Skyhawk", length: 12.59, duration: 9, scale: 1.6, revs: 0, pitch: 0.03, bank: 12, maxBank: 0.6, bob: 0.05,
+  maneuvers: ["roll", "doubleRoll", "barrelRoll", "loop", "wingRock"],
+  exhaust: { at: [-6.29, 2.04, 0], radius: 0.32 }
+};
+const SUBMARINE = { model: SUBMARINE_MODEL, label: "submarino", duration: CROSSING, revs: PROPELLER_REVS };
 
-const flightStart = aircraft => FLIGHT_START + (FLIGHT - aircraft.duration) / 2;
+// Ordem da cena: o AF-1, o UH-17 e o submarino, um de cada vez, com o mar
+// vazio por PAUSE segundos depois de cada um; então a sequência recomeça.
+const SEQUENCE = [SKYHAWK, HELICOPTER, SUBMARINE];
+// A página abre com o AF-1 já um pouco dentro da tela, parado até o rádio
+// tocar; a manobra dele fica para depois desse instante.
+const OPENING = 0.3 * SKYHAWK.duration;
 
 // [lane] vem de layoutOf: o centro da capa do álbum, na altura do qual a
 // aeronave voa, passando por trás dela como por trás de um prédio (cover);
@@ -787,7 +786,8 @@ function visibleShare(width, height, flight, u) {
 // Marca a hora da manobra: onde a aeronave fica mais à vista pelo tempo que
 // ela dura — no celular, a capa esconde o meio da tela. A travessia continua
 // com a mesma duração: se a manobra freia a derrota, o cruzeiro acelera um
-// pouco para compensar.
+// pouco para compensar. Com [notBefore], a manobra só começa depois desse
+// instante.
 function schedule(width, height, flight) {
   const { aircraft, maneuver } = flight;
   const move = MANEUVERS[maneuver.kind];
@@ -799,11 +799,12 @@ function schedule(width, height, flight) {
   const cruise = 1 / (total - span + mean * span);
   const reach = cruise * span * mean;
   const seen = Array.from({ length: 101 }, (_, k) => visibleShare(width, height, flight, k / 100));
+  const earliest = Math.max(0.3, flight.notBefore || 0);
   const options = [];
   for (let k = 12; k <= 88; k += 1) {
     const center = k / 100;
     const begin = center / cruise - span * mean / 2;
-    if (begin < 0.3 || begin + span > total - 0.3) continue;
+    if (begin < earliest || begin + span > total - 0.3) continue;
     const from = Math.max(0, Math.floor((center - reach / 2 - 0.02) * 100));
     const to = Math.min(100, Math.ceil((center + reach / 2 + 0.02) * 100));
     let sum = 0;
@@ -812,7 +813,7 @@ function schedule(width, height, flight) {
   }
   const best = Math.max(0, ...options.map(option => option.score));
   const good = options.filter(option => option.score >= best * 0.85);
-  const begin = good.length ? good[Math.floor(maneuver.pick * good.length)].begin : (total - span) / 2;
+  const begin = good.length ? good[Math.floor(maneuver.pick * good.length)].begin : Math.max(earliest, (total - span) / 2);
   flight.plan = { begin, span, cruise, mean, table, from: cruise * begin, to: cruise * (begin + span * mean) };
 }
 
@@ -868,11 +869,10 @@ function prepare(width, height, flight) {
   flight.drop = clearance(width, height, flight);
 }
 
-// A aeronave no instante [seconds] do ciclo.
-function flightAt(width, height, flight, seconds) {
+// A aeronave [elapsed] segundos depois de entrar em cena.
+function flightAt(width, height, flight, elapsed) {
   const { length, duration, pitch, bank, maxBank, bob } = flight.aircraft;
   prepare(width, height, flight);
-  const elapsed = seconds - flightStart(flight.aircraft);
   const u = progress(flight, elapsed);
   const pass = passAt(width, height, flight, u, length);
   pass.y += flight.drop;
@@ -883,10 +883,10 @@ function flightAt(width, height, flight, seconds) {
   const omega = (next.heading - pass.heading) / (other - elapsed);
   const speed = Math.abs(next.travelled - pass.travelled) / dt;
   pass.roll = Math.max(-maxBank, Math.min(maxBank, Math.atan(speed * omega / 9.81) * bank));
-  pass.pitch = pitch + Math.sin(seconds * 0.9) * 0.01;
+  pass.pitch = pitch + Math.sin(elapsed * 0.9) * 0.01;
   pass.yaw = 0;
   pass.trim = 0;
-  pass.y += Math.sin(seconds * 1.1) * bob * pass.ppm;
+  pass.y += Math.sin(elapsed * 1.1) * bob * pass.ppm;
   // Surge e some pelas bordas com mais calma que o submarino, cujo voo é
   // mais longo.
   pass.opacity = Math.max(0, Math.min(1, Math.min(u, 1 - u) / 0.08));
@@ -917,9 +917,9 @@ function flightAt(width, height, flight, seconds) {
 const side = x => (x < 0 ? "left" : x > 1 ? "right" : null);
 
 // Sorteia de novo enquanto o rumo entrar pelo lado por onde o anterior saiu:
-// a aeronave não pode surgir no ponto em que o submarino acabou de sumir,
-// como se um tivesse virado o outro. Só vale nessa passagem: aplicada também
-// da aeronave para o submarino, a regra prendia os dois num sentido só.
+// a aeronave não pode surgir no ponto em que o submarino ou a outra aeronave
+// acabou de sumir, como se um tivesse virado o outro. Só vale para as
+// aeronaves: aplicada também ao submarino, a regra prendia todos num sentido só.
 function awayFrom(avoid, make) {
   let item = make();
   for (let tries = 0; avoid && side(item.entryX) === avoid && tries < 20; tries += 1) item = make();
@@ -983,11 +983,10 @@ function plume(ctx, ratio, from, to, r0, r1, color, alpha) {
   });
 }
 
-// [pass] é o avião agora (nulo fora da travessia: o rastro ainda se desfaz
-// depois que ele sai de cena).
-function drawExhaust(ctx, ratio, width, height, flight, pass, seconds) {
+// [pass] é o avião agora, [elapsed] segundos depois de entrar em cena (nulo
+// fora da travessia: o rastro ainda se desfaz depois que ele sai de cena).
+function drawExhaust(ctx, ratio, width, height, flight, pass, elapsed) {
   const { exhaust, duration, model } = flight.aircraft;
-  const start = flightStart(flight.aircraft);
   const [ex, ey, ez] = exhaust.at;
   const at = (q, aft, above = 0, lateral = 0) => bodyPoint(q, model.pivot, ex - aft, ey + above, ez + lateral);
 
@@ -995,8 +994,8 @@ function drawExhaust(ctx, ratio, width, height, flight, pass, seconds) {
   // jato, abre, sobe um pouco e se apaga; o tamanho vem da distância em que
   // ela nasceu. Onde e como o avião estava ao soltar cada lufada não muda de
   // um quadro para o outro, então fica guardado no voo.
-  const first = Math.max(0, Math.ceil((seconds - start - EXHAUST_LIFE) / EXHAUST_STEP));
-  const last = Math.min(Math.floor((seconds - start) / EXHAUST_STEP), Math.floor(duration / EXHAUST_STEP));
+  const first = Math.max(0, Math.ceil((elapsed - EXHAUST_LIFE) / EXHAUST_STEP));
+  const last = Math.min(Math.floor(elapsed / EXHAUST_STEP), Math.floor(duration / EXHAUST_STEP));
   const key = `${width}x${height}`;
   if (flight.birthKey !== key) {
     flight.birthKey = key;
@@ -1004,8 +1003,8 @@ function drawExhaust(ctx, ratio, width, height, flight, pass, seconds) {
   }
   for (const k of flight.births.keys()) if (k < first) flight.births.delete(k);
   for (let k = first; k <= last; k += 1) {
-    const born = start + k * EXHAUST_STEP;
-    const age = seconds - born;
+    const born = k * EXHAUST_STEP;
+    const age = elapsed - born;
     let q = flight.births.get(k);
     if (!q) {
       q = flightAt(width, height, flight, born);
@@ -1023,7 +1022,7 @@ function drawExhaust(ctx, ratio, width, height, flight, pass, seconds) {
 
   // 2. Jato quente e brilho do bocal, com uma leve cintilação.
   if (!pass) return;
-  const t = seconds * 18, i = Math.floor(t);
+  const t = elapsed * 18, i = Math.floor(t);
   const flicker = 0.85 + 0.15 * (noise(i, 9, 71) + (noise(i + 1, 9, 71) - noise(i, 9, 71)) * (t - i));
   const strength = pass.opacity * flicker;
   const r = exhaust.radius * pass.ppm;
@@ -1049,7 +1048,7 @@ export default function SubmarineScene({ playing, accent }) {
 
   useEffect(() => {
     let disposed = false, frame = 0, renderer = null;
-    let sceneTime = 0, throttle = 0, lastTime = 0, lastKey = "";
+    let throttle = 0, lastTime = 0, lastKey = "";
     const scene = modelRef.current?.parentElement;
     // Onde cada um passa, medido no layout de verdade. O submarino vai fundo,
     // pelo meio do cartão de volume, com o casco entrando por trás do vidro
@@ -1084,24 +1083,19 @@ export default function SubmarineScene({ playing, accent }) {
       return { sub, cover, box: coverBox, ceiling: 4 / box.height, floor: sub - sail - 0.02, aspect, scale };
     };
     const newCourse = () => { const l = layoutOf(); return l ? randomCourse(l.sub, l.scale) : randomCourse(0.62); };
-    // As aeronaves se revezam a cada ciclo, começando pelo UH-17, e nenhuma
-    // repete a manobra da passagem anterior.
-    let flights = 0;
+    // Nenhuma aeronave repete a manobra da sua passagem anterior.
     const lastManeuver = new Map();
-    const newFlight = () => {
-      const aircraft = AIRCRAFT[flights % AIRCRAFT.length];
-      return randomFlight(aircraft, layoutOf() || undefined, lastManeuver.get(aircraft));
-    };
-    const takeOff = () => {
-      const next = awayFrom(side(course.exitX), newFlight);
-      lastManeuver.set(next.aircraft, next.maneuver.kind);
+    const takeOff = (aircraft, avoid) => {
+      const next = awayFrom(avoid, () => randomFlight(aircraft, layoutOf() || undefined, lastManeuver.get(aircraft)));
+      lastManeuver.set(aircraft, next.maneuver.kind);
       return next;
     };
-    let course = newCourse();
-    let flight = takeOff();
-    const startCycle = 0.35 * CROSSING_FRACTION;
+    // [turn] é a vez na SEQUENCE; [elapsed], há quanto tempo quem está na vez
+    // entrou em cena; [route], o rumo dele (do submarino ou da aeronave).
+    let turn = 0, elapsed = OPENING;
+    let route = takeOff(SEQUENCE[0], null);
+    route.notBefore = OPENING;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const cycles = () => sceneTime / CYCLE + startCycle;
 
     const tick = now => {
       if (disposed) return;
@@ -1113,14 +1107,14 @@ export default function SubmarineScene({ playing, accent }) {
         const before = easeInOut(throttle);
         throttle = Math.max(0, Math.min(1, throttle + (playingRef.current ? dt : -dt) / RAMP_SECONDS));
         const after = easeInOut(throttle);
-        const cycleBefore = Math.floor(cycles());
-        sceneTime += dt * (before + after) / 2;
-        // Virada do ciclo: sub e aeronave já saíram de cena, hora de
-        // sortear os próximos rumos.
-        if (Math.floor(cycles()) !== cycleBefore) {
-          course = newCourse();
-          flights += 1;
-          flight = takeOff();
+        elapsed += dt * (before + after) / 2;
+        // Quem estava na vez já saiu de cena e o mar descansou: passa a vez ao
+        // próximo da sequência, com um rumo novo.
+        while (elapsed >= SEQUENCE[turn].duration + PAUSE) {
+          elapsed -= SEQUENCE[turn].duration + PAUSE;
+          const left = side(route.exitX);
+          turn = (turn + 1) % SEQUENCE.length;
+          route = SEQUENCE[turn] === SUBMARINE ? newCourse() : takeOff(SEQUENCE[turn], left);
         }
       }
 
@@ -1128,35 +1122,25 @@ export default function SubmarineScene({ playing, accent }) {
       const width = rect.width, height = rect.height;
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const accentColor = accentRef.current;
-      const { aircraft } = flight;
-      const loaded = `${renderer.has(SUBMARINE_MODEL)}${renderer.has(aircraft.model)}`;
-      const key = `${sceneTime}|${width}|${height}|${ratio}|${accentColor}|${loaded}`;
+      const actor = SEQUENCE[turn];
+      const loaded = renderer.has(actor.model);
+      const key = `${turn}|${elapsed}|${width}|${height}|${ratio}|${accentColor}|${loaded}`;
       if (width && height && key !== lastKey) {
         lastKey = key;
-        const total = cycles();
-        const cycle = total - Math.floor(total);
-        const cycleSeconds = cycle * CYCLE;
-        const t = cycle / CROSSING_FRACTION;
-        const submarine = t > 1 || !renderer.has(SUBMARINE_MODEL) ? null : passAt(width, height, course, t);
-        const elapsed = cycleSeconds - flightStart(aircraft);
-        const overhead = elapsed < 0 || elapsed > aircraft.duration || !renderer.has(aircraft.model)
+        const pass = elapsed > actor.duration || !loaded
           ? null
-          : flightAt(width, height, flight, cycleSeconds);
+          : actor === SUBMARINE ? passAt(width, height, route, elapsed / CROSSING) : flightAt(width, height, route, elapsed);
         renderer.draw([
-          { model: SUBMARINE_MODEL, pass: submarine, angle: cycleSeconds * PROPELLER_REVS * 2 * Math.PI },
-          { model: aircraft.model, pass: overhead, angle: cycleSeconds * aircraft.revs * 2 * Math.PI }
+          { model: actor.model, pass, angle: elapsed * actor.revs * 2 * Math.PI }
         ], width, height, ratio);
         drawBackdrop(wakeRef.current, width, height, ratio, ctx => {
-          if (submarine) {
-            drawShadow(ctx, ratio, submarine);
-            drawWake(ctx, ratio, width, submarine, cycleSeconds, accentColor);
+          if (actor === SUBMARINE && pass) {
+            drawShadow(ctx, ratio, pass);
+            drawWake(ctx, ratio, width, pass, elapsed, accentColor);
           }
-          if (aircraft.exhaust && renderer.has(aircraft.model)) {
-            drawExhaust(ctx, ratio, width, height, flight, overhead, cycleSeconds);
-          }
+          if (actor.exhaust && loaded) drawExhaust(ctx, ratio, width, height, route, pass, elapsed);
         });
-        const visible = Math.max(submarine ? submarine.opacity : 0, overhead ? overhead.opacity : 0);
-        modelRef.current.style.opacity = String(BACKDROP_OPACITY * visible);
+        modelRef.current.style.opacity = String(BACKDROP_OPACITY * (pass ? pass.opacity : 0));
       }
       frame = requestAnimationFrame(tick);
     };
@@ -1173,11 +1157,10 @@ export default function SubmarineScene({ playing, accent }) {
       .then(response => { if (!response.ok) throw new Error(`Modelo do ${label} indisponível`); return response.json(); })
       .then(data => { if (!disposed) renderer.add(model, data); })
       .catch(error => console.error(`Não foi possível desenhar o ${label}:`, error));
-    // O submarino entra primeiro; as aeronaves só depois dele, uma de cada vez,
-    // na ordem em que voam.
-    AIRCRAFT.reduce(
+    // Os modelos chegam um de cada vez, na ordem em que entram em cena.
+    SEQUENCE.reduce(
       (chain, item) => chain.then(() => (disposed ? undefined : load(item.model, item.label))),
-      load(SUBMARINE_MODEL, "submarino")
+      Promise.resolve()
     );
 
     return () => { disposed = true; cancelAnimationFrame(frame); renderer.dispose(); };
