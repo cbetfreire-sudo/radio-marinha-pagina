@@ -3,8 +3,8 @@ import React, { useEffect, useRef } from "react";
 // Port do cenário do app (marinha_app/lib/components/radio_submarine):
 // mesma malha do Riachuelo (variante S43, Almirante Karam), mesma câmera, mesmos
 // rumos e a mesma esteira da hélice. As aeronaves do SuperCard Naval sobrevoam
-// o alto da tela: o AF-1 Skyhawk, depois o UH-17, depois o submarino cruza, um
-// de cada vez, e a sequência recomeça.
+// o alto da tela: o AF-1 Skyhawk, depois o UH-17, depois o AH-11B Super Lynx,
+// depois o submarino cruza, um de cada vez, e a sequência recomeça.
 
 const HULL_LENGTH = 71.62;
 const HULL_BEAM = 6.2;
@@ -17,7 +17,7 @@ const PROPELLER_CENTER_Y = -1.55;
 // Duração da travessia do submarino e do mar vazio depois de cada um que
 // passa (veja SEQUENCE).
 const CROSSING = 34;
-const PAUSE = 5;
+const PAUSE = 10;
 const RAMP_SECONDS = 1.8;
 const BACKDROP_OPACITY = 0.85;
 const DEFAULT_ACCENT = [0, 229, 255];
@@ -138,6 +138,21 @@ const HELICOPTER_MODEL = {
   spinners: [
     { test: /main_rotor_blade|rotor_head_fairing|blade_root_damper/i, axis: "y", center: [-0.36, 3.69, 0], speed: 1 },
     { test: /fenestron_blade/i, axis: "z", center: [-6.30, 1.86, 0], speed: 3.2 }
+  ],
+  exposure: 1.05,
+  tint: [0.62, 0.74, 0.84],
+  tintAmount: [0.03, 0.05, 0.16]
+};
+
+// AH-11B Super Lynx (Mk21B, N-4003) do SuperCard Naval. Cubos e velocidades
+// do campo rotors da malha: o principal em Y sobre o mastro e o rotor de
+// cauda, a bombordo, em Z. O trem do Lynx é fixo e fica à vista em voo.
+const LYNX_MODEL = {
+  url: "/imagens/ah11b.mesh.json",
+  pivot: [0, 1.8, 0],
+  spinners: [
+    { test: /main_rotor_blade|rotor_head_fairing|blade_root_damper/i, axis: "y", center: [0, 3.39, 0], speed: 1 },
+    { test: /tail_rotor_blade|tail_rotor_hub/i, axis: "z", center: [-7.33, 2.49, -0.47], speed: 3.4 }
   ],
   exposure: 1.05,
   tint: [0.62, 0.74, 0.84],
@@ -612,13 +627,13 @@ function easeInOut(x) {
   return 3 * (1 - u) * u * u + u * u * u;
 }
 
-// ── Sobrevoo do UH-17 e do Skyhawk ────────────────────────────────────────
+// ── Sobrevoo do Skyhawk, do UH-17 e do Super Lynx ─────────────────────────
 //
-// Antes de cada travessia do submarino, o Skyhawk e depois o UH-17 cruzam a
-// tela, um de cada vez, e cada um faz uma manobra no caminho. A derrota usa a
-// mesma física da travessia do submarino (velocidade constante sobre um arco,
-// câmera de furo de agulha), só que acima da câmera: vê-se a aeronave um
-// pouco de baixo, inclinando nas curvas.
+// Antes de cada travessia do submarino, o Skyhawk, o UH-17 e o Super Lynx
+// cruzam a tela, um de cada vez, e cada um faz uma manobra no caminho. A
+// derrota usa a mesma física da travessia do submarino (velocidade constante
+// sobre um arco, câmera de furo de agulha), só que acima da câmera: vê-se a
+// aeronave um pouco de baixo, inclinando nas curvas.
 
 // Sobe e desce devagar nas pontas: derivada nula em 0 e em 1.
 const ease = x => x - Math.sin(2 * Math.PI * x) / (2 * Math.PI);
@@ -715,6 +730,10 @@ const HELICOPTER = {
   model: HELICOPTER_MODEL, label: "helicóptero", length: 11.7, duration: 15, scale: 1.6, revs: 2.3, pitch: -0.06, bank: 4, maxBank: 0.26, bob: 0.18,
   maneuvers: ["pirouette", "hoverPirouette", "bow", "sway"]
 };
+const LYNX = {
+  model: LYNX_MODEL, label: "Super Lynx", length: 13.3, duration: 15, scale: 1.6, revs: 2.0, pitch: -0.06, bank: 4, maxBank: 0.26, bob: 0.18,
+  maneuvers: ["pirouette", "hoverPirouette", "bow", "sway"]
+};
 const SKYHAWK = {
   model: SKYHAWK_MODEL, label: "Skyhawk", length: 12.59, duration: 9, scale: 1.6, revs: 0, pitch: 0.03, bank: 12, maxBank: 0.6, bob: 0.05,
   maneuvers: ["roll", "doubleRoll", "barrelRoll", "loop", "wingRock"],
@@ -722,9 +741,9 @@ const SKYHAWK = {
 };
 const SUBMARINE = { model: SUBMARINE_MODEL, label: "submarino", duration: CROSSING, revs: PROPELLER_REVS };
 
-// Ordem da cena: o AF-1, o UH-17 e o submarino, um de cada vez, com o mar
-// vazio por PAUSE segundos depois de cada um; então a sequência recomeça.
-const SEQUENCE = [SKYHAWK, HELICOPTER, SUBMARINE];
+// Ordem da cena: o AF-1, o UH-17, o AH-11B e o submarino, um de cada vez, com
+// o mar vazio por PAUSE segundos depois de cada um; então a sequência recomeça.
+const SEQUENCE = [SKYHAWK, HELICOPTER, LYNX, SUBMARINE];
 // A página abre com o AF-1 já um pouco dentro da tela, parado até o rádio
 // tocar; a manobra dele fica para depois desse instante.
 const OPENING = 0.3 * SKYHAWK.duration;
